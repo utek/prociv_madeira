@@ -1,0 +1,12 @@
+{
+    "config": {
+        "step": {
+            "user": {
+                "description": "Add ProCiv Madeira alerts to Home Assistant."
+            }
+        },
+        "abort": {
+            "already_configured": "ProCiv Madeira is already configured."
+        }
+    }
+}
