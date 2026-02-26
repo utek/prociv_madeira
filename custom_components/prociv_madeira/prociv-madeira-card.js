@@ -61,8 +61,6 @@ const ALERT_LABELS = {
   RED: 'Extreme',
 };
 
-const SEVERITY_RANK = { GREEN: 0, YELLOW: 1, ORANGE: 2, RED: 3 };
-
 // ── Demo data for the card-picker preview ──────────────────────────────────────
 
 const DEMO_STATES = {
@@ -107,6 +105,14 @@ const DEMO_STATES = {
       end_date: '2024-01-15T18:00:00',
     },
   },
+  'binary_sensor.prociv_madeira_any_active_alert': {
+    state: 'on',
+    attributes: { friendly_name: 'Any Active Alert' },
+  },
+  'sensor.prociv_madeira_worst_alert': {
+    state: 'ORANGE',
+    attributes: { friendly_name: 'Worst Alert' },
+  },
 };
 
 // ── Shared helpers ─────────────────────────────────────────────────────────────
@@ -123,12 +129,6 @@ function fmtDate(iso) {
   } catch {
     return iso;
   }
-}
-
-function worstState(states) {
-  return states.reduce((worst, s) => {
-    return (SEVERITY_RANK[s] ?? -1) > (SEVERITY_RANK[worst] ?? -1) ? s : worst;
-  }, 'GREEN');
 }
 
 // ── Card 1: prociv-madeira-card (compact, expandable) ─────────────────────────
@@ -236,11 +236,11 @@ class ProcivMadeiraCard extends HTMLElement {
     if (!this._hass && !this._preview) return;
 
     const ids = this._config.entities;
-    const states = ids.map((id) => this._stateFor(id)?.state ?? 'GREEN');
-    const worst = worstState(states);
-    const wc = ALERT_COLORS[worst];
+    const worst = this._stateFor(this._config.worst_sensor)?.state ?? 'GREEN';
+    const wc = ALERT_COLORS[worst] ?? ALERT_COLORS.GREEN;
     const title = this._config.title ?? 'Madeira - Weather Alerts';
-    const hdrIcon = worst === 'GREEN' ? 'mdi:shield-check' : 'mdi:shield-alert';
+    const anyAlert = this._stateFor(this._config.binary_sensor)?.state === 'on';
+    const hdrIcon = anyAlert ? 'mdi:shield-alert' : 'mdi:shield-check';
 
     this.shadowRoot.innerHTML = `
       <style>
@@ -327,6 +327,8 @@ class ProcivMadeiraCard extends HTMLElement {
         'sensor.porto_santo',
         'sensor.regioes_montanhosas',
       ],
+      binary_sensor: 'binary_sensor.prociv_madeira_any_active_alert',
+      worst_sensor: 'sensor.prociv_madeira_worst_alert',
     };
   }
 }
@@ -415,11 +417,10 @@ class ProcivMadeiraDetailCard extends HTMLElement {
 
     const ids = this._config.entities;
     const title = this._config.title ?? 'ProCiv Madeira';
-    const worst = worstState(
-      ids.map((id) => this._stateFor(id)?.state ?? 'GREEN'),
-    );
-    const wc = ALERT_COLORS[worst];
+    const worst = this._stateFor(this._config.worst_sensor)?.state ?? 'GREEN';
+    const wc = ALERT_COLORS[worst] ?? ALERT_COLORS.GREEN;
     const wIcon = ALERT_ICONS[worst];
+    const anyAlert = this._stateFor(this._config.binary_sensor)?.state === 'on';
 
     const firstState = this._stateFor(ids[0]);
     const lastUpdated = firstState?.last_updated
@@ -464,7 +465,7 @@ class ProcivMadeiraDetailCard extends HTMLElement {
         <div class="accent-bar"></div>
         <div class="summary-row">
           <ha-icon class="summary-icon" icon="${wIcon}"></ha-icon>
-          <span class="summary-text">${worst === 'GREEN' ? 'All regions normal' : 'Active alerts'}</span>
+          <span class="summary-text">${anyAlert ? 'Active alerts' : 'All regions normal'}</span>
           <span class="summary-badge">${ALERT_LABELS[worst]}</span>
         </div>
         <div class="regions-list">
@@ -486,6 +487,8 @@ class ProcivMadeiraDetailCard extends HTMLElement {
         'sensor.porto_santo',
         'sensor.regioes_montanhosas',
       ],
+      binary_sensor: 'binary_sensor.prociv_madeira_any_active_alert',
+      worst_sensor: 'sensor.prociv_madeira_worst_alert',
     };
   }
 }

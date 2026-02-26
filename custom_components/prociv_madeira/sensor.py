@@ -10,6 +10,7 @@ from homeassistant.components.sensor import SensorDeviceClass
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.helpers.entity import EntityCategory
 
+from .alerts import ALERT_SEVERITY
 from .alerts import ALERT_TYPE_COLOR
 from .alerts import REGIONS
 from .entity import ProcivMadeiraEntity
@@ -35,6 +36,7 @@ async def async_setup_entry(
                 ProcivMadeiraSensor(coordinator=coordinator, region_code=code)
                 for code in REGIONS
             ],
+            ProcivMadeiraWorstAlertSensor(coordinator=coordinator),
             ProcivMadeiraLastFetchSensor(coordinator=coordinator),
         ]
     )
@@ -110,6 +112,45 @@ class ProcivMadeiraSensor(ProcivMadeiraEntity, SensorEntity):
             "start_date": alert.get("start_date"),
             "end_date": alert.get("end_date"),
         }
+
+
+class ProcivMadeiraWorstAlertSensor(ProcivMadeiraEntity, SensorEntity):
+    """Sensor that reports the highest-severity alert across all regions."""
+
+    _attr_device_class = SensorDeviceClass.ENUM
+    _attr_options = ["GREEN", "YELLOW", "ORANGE", "RED"]
+    _attr_name = "Worst Alert"
+    _attr_state_color = True
+
+    def __init__(self, coordinator: ProcivMadeiraDataUpdateCoordinator) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{coordinator.config_entry.entry_id}_worst_alert"
+
+    @property
+    def native_value(self) -> str:
+        """Return the most severe alert type across all regions."""
+        data = self.coordinator.data or {}
+        return max(
+            (alert.get("alert_type", "GREEN") for alert in data.values()),
+            key=lambda t: ALERT_SEVERITY.get(t, 0),
+            default="GREEN",
+        )
+
+    @property
+    def icon(self) -> str:
+        """Return an icon reflecting the worst alert level."""
+        return _ALERT_ICONS.get(self.native_value, "mdi:alert")
+
+    @property
+    def entity_color(self) -> str | None:
+        """Return an HA UI color string matching the worst alert level."""
+        return {
+            "GREEN": "green",
+            "YELLOW": "yellow",
+            "ORANGE": "orange",
+            "RED": "red",
+        }.get(self.native_value)
 
 
 class ProcivMadeiraLastFetchSensor(ProcivMadeiraEntity, SensorEntity):

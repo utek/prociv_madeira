@@ -142,6 +142,14 @@ COLOR_TO_ALERT_TYPE = {
     "#c00000": "RED",
 }
 
+# Severity ordering — higher number is more severe
+ALERT_SEVERITY: dict[str, int] = {
+    "GREEN": 0,
+    "YELLOW": 1,
+    "ORANGE": 2,
+    "RED": 3,
+}
+
 # Canonical display color for each alert level (usable as CSS background-color)
 ALERT_TYPE_COLOR: dict[str, str] = {
     "GREEN": "#00b050",
