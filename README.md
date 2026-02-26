@@ -6,13 +6,13 @@ Home Assistant integration for ProCiv Madeira alerts.
 
 This repository contains the ProCiv Madeira custom integration for Home Assistant.
 
-File | Purpose | Documentation
--- | -- | --
-`.devcontainer.json` | Used for development/testing with Visual Studio Code. | [Documentation](https://code.visualstudio.com/docs/remote/containers)
-`custom_components/prociv_madeira/*` | Integration files, this is where everything happens. | [Documentation](https://developers.home-assistant.io/docs/creating_component_index)
-`LICENSE` | The license file for the project. | [Documentation](https://help.github.com/en/github/creating-cloning-and-archiving-repositories/licensing-a-repository)
-`README.md` | The file you are reading now, should contain info about the integration, installation and configuration instructions. | [Documentation](https://help.github.com/en/github/writing-on-github/basic-writing-and-formatting-syntax)
-`requirements.txt` | Python packages used for development/lint/testing this integration. | [Documentation](https://pip.pypa.io/en/stable/user_guide/#requirements-files)
+| File                                 | Purpose                                                                                                               | Documentation                                                                                                         |
+| ------------------------------------ | --------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `.devcontainer.json`                 | Used for development/testing with Visual Studio Code.                                                                 | [Documentation](https://code.visualstudio.com/docs/remote/containers)                                                 |
+| `custom_components/prociv_madeira/*` | Integration files, this is where everything happens.                                                                  | [Documentation](https://developers.home-assistant.io/docs/creating_component_index)                                   |
+| `LICENSE`                            | The license file for the project.                                                                                     | [Documentation](https://help.github.com/en/github/creating-cloning-and-archiving-repositories/licensing-a-repository) |
+| `README.md`                          | The file you are reading now, should contain info about the integration, installation and configuration instructions. | [Documentation](https://help.github.com/en/github/writing-on-github/basic-writing-and-formatting-syntax)              |
+| `requirements.txt`                   | Python packages used for development/lint/testing this integration.                                                   | [Documentation](https://pip.pypa.io/en/stable/user_guide/#requirements-files)                                         |
 
 ## Installation
 

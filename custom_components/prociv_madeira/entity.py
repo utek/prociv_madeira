@@ -13,6 +13,7 @@ class ProcivMadeiraEntity(CoordinatorEntity[ProcivMadeiraDataUpdateCoordinator])
     """ProcivMadeiraEntity class."""
 
     _attr_attribution = ATTRIBUTION
+    _attr_has_entity_name = True
 
     def __init__(self, coordinator: ProcivMadeiraDataUpdateCoordinator) -> None:
         """Initialize."""
@@ -24,5 +25,5 @@ class ProcivMadeiraEntity(CoordinatorEntity[ProcivMadeiraDataUpdateCoordinator])
                     coordinator.config_entry.entry_id,
                 ),
             },
-            name="ProCiv Madeira",
+            name="ProCiv Madeira Weather Alerts",
         )

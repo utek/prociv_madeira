@@ -1,12 +1,49 @@
 {
-    "config": {
-        "step": {
-            "user": {
-                "description": "Add ProCiv Madeira alerts to Home Assistant."
-            }
+  "config": {
+    "step": {
+      "user": {
+        "description": "Add ProCiv Madeira alerts to Home Assistant.",
+        "data": {
+          "scan_interval": "Scan interval (minutes)"
         },
-        "abort": {
-            "already_configured": "ProCiv Madeira is already configured."
+        "data_description": {
+          "scan_interval": "How often to fetch alerts from procivmadeira.pt (5–1440 minutes)."
         }
+      }
+    },
+    "abort": {
+      "already_configured": "ProCiv Madeira is already configured."
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "ProCiv Madeira Options",
+        "data": {
+          "scan_interval": "Scan interval (minutes)"
+        },
+        "data_description": {
+          "scan_interval": "How often to fetch alerts from procivmadeira.pt (5–1440 minutes)."
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "alert": {
+        "state": {
+          "GREEN": "Normal",
+          "YELLOW": "Moderate",
+          "ORANGE": "High",
+          "RED": "Extreme"
+        },
+        "state_color": {
+          "GREEN": "success",
+          "YELLOW": "yellow",
+          "ORANGE": "orange",
+          "RED": "red"
+        }
+      }
+    }
+  }
 }

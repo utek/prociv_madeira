@@ -1,0 +1,37 @@
+# ==== pytest ====
+[tool.ruff]
+lint.select = [
+    "E", # pycodestyle errors
+    "W", # pycodestyle warnings
+    "I", # isort
+    "F", # pyflakes
+    "C", # flake8-comprehensions
+    "B", # flake8-bugbear
+    #    "N",  # pep8-naming
+    #    "PLE", "PLR", "PLW",  # pylint
+    #    "RUF",  # ruff-specific
+    #    "ERA",  # eradicate
+    "UP", # pyupgrade
+    #    "D",  # pydocstyle
+]
+lint.ignore = [
+    "ANN401", # Dynamically typed expressions (typing.Any) are disallowed
+    "D203", # no-blank-line-before-class (incompatible with formatter)
+    "D212", # multi-line-summary-first-line (incompatible with formatter)
+    "COM812", # incompatible with formatter
+    "ISC001", # incompatible with formatter
+]
+
+line-length = 88
+
+exclude = [
+    ".venv/*"
+]
+
+[tool.ruff.lint.mccabe]
+# Flag errors (`C901`) whenever the complexity level exceeds 14.
+max-complexity = 14
+
+[tool.ruff.lint.isort]
+combine-as-imports = true
+force-single-line = true
