@@ -87,7 +87,7 @@ class ProcivMadeiraSensor(ProcivMadeiraEntity, SensorEntity):
         Supported on HA 2024.1+; silently unused on older versions.
         """
         return {
-            "GREEN": "success",
+            "GREEN": "green",
             "YELLOW": "yellow",
             "ORANGE": "orange",
             "RED": "red",
