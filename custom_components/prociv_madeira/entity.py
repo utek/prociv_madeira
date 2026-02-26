@@ -1,4 +1,4 @@
-"""BlueprintEntity class."""
+"""ProcivMadeiraEntity class."""
 
 from __future__ import annotations
 
@@ -6,18 +6,17 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import ATTRIBUTION
-from .coordinator import BlueprintDataUpdateCoordinator
+from .coordinator import ProcivMadeiraDataUpdateCoordinator
 
 
-class IntegrationBlueprintEntity(CoordinatorEntity[BlueprintDataUpdateCoordinator]):
-    """BlueprintEntity class."""
+class ProcivMadeiraEntity(CoordinatorEntity[ProcivMadeiraDataUpdateCoordinator]):
+    """ProcivMadeiraEntity class."""
 
     _attr_attribution = ATTRIBUTION
 
-    def __init__(self, coordinator: BlueprintDataUpdateCoordinator) -> None:
+    def __init__(self, coordinator: ProcivMadeiraDataUpdateCoordinator) -> None:
         """Initialize."""
         super().__init__(coordinator)
-        self._attr_unique_id = coordinator.config_entry.entry_id
         self._attr_device_info = DeviceInfo(
             identifiers={
                 (
@@ -25,4 +24,5 @@ class IntegrationBlueprintEntity(CoordinatorEntity[BlueprintDataUpdateCoordinato
                     coordinator.config_entry.entry_id,
                 ),
             },
+            name="ProCiv Madeira",
         )
