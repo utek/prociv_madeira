@@ -8,11 +8,8 @@ https://github.com/utek/prociv_madeira
 from __future__ import annotations
 
 from datetime import timedelta
-from pathlib import Path
 from typing import TYPE_CHECKING
 
-from homeassistant.components.frontend import add_extra_js_url
-from homeassistant.components.http import StaticPathConfig
 from homeassistant.const import Platform
 from homeassistant.loader import async_get_loaded_integration
 
@@ -27,9 +24,6 @@ if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
 
     from .data import ProcivMadeiraConfigEntry
-
-_CARD_URL = "/prociv_madeira/prociv-madeira-card.js"
-_CARD_FILE = Path(__file__).parent / "prociv-madeira-card.js"
 
 PLATFORMS: list[Platform] = [
     Platform.BINARY_SENSOR,
@@ -61,21 +55,7 @@ async def async_setup_entry(
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))
 
-    await _async_register_card(hass)
-
     return True
-
-
-async def _async_register_card(hass: HomeAssistant) -> None:
-    """Serve the bundled Lovelace card and inject it into the frontend."""
-    try:
-        await hass.http.async_register_static_paths(
-            [StaticPathConfig(_CARD_URL, str(_CARD_FILE), cache_headers=False)]
-        )
-    except RuntimeError:
-        # Route already registered on a previous load — safe to ignore.
-        return
-    add_extra_js_url(hass, _CARD_URL)
 
 
 async def async_unload_entry(

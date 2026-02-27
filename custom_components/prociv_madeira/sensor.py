@@ -120,6 +120,7 @@ class ProcivMadeiraWorstAlertSensor(ProcivMadeiraEntity, SensorEntity):
     _attr_device_class = SensorDeviceClass.ENUM
     _attr_options = ["GREEN", "YELLOW", "ORANGE", "RED"]
     _attr_name = "Worst Alert"
+    _attr_translation_key = "alert"
     _attr_state_color = True
 
     def __init__(self, coordinator: ProcivMadeiraDataUpdateCoordinator) -> None:
