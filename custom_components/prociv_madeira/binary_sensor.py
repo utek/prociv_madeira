@@ -37,13 +37,16 @@ class ProcivMadeiraAnyAlertBinarySensor(ProcivMadeiraEntity, BinarySensorEntity)
         """Initialize the binary sensor."""
         super().__init__(coordinator)
         self._attr_unique_id = f"{coordinator.config_entry.entry_id}_any_alert"
+        self.entity_id = "binary_sensor.prociv_madeira_any_active_alert"
 
     @property
     def is_on(self) -> bool:
         """Return True if any region has a non-green alert."""
         data = self.coordinator.data or {}
         return any(
-            alert.get("alert_type", "GREEN") != "GREEN" for alert in data.values()
+            alert.get("alert_type", "GREEN") != "GREEN"
+            for alerts in data.values()
+            for alert in alerts
         )
 
     @property

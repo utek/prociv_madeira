@@ -9,6 +9,7 @@ from typing import Any
 from homeassistant.components.sensor import SensorDeviceClass
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.helpers.entity import EntityCategory
+from homeassistant.util import slugify
 
 from .alerts import ALERT_SEVERITY
 from .alerts import ALERT_TYPE_COLOR
@@ -69,12 +70,14 @@ class ProcivMadeiraSensor(ProcivMadeiraEntity, SensorEntity):
         self._region_code = region_code
         self._attr_unique_id = f"{coordinator.config_entry.entry_id}_{region_code}"
         self._attr_name = REGIONS[region_code]
+        self.entity_id = f"sensor.prociv_madeira_alert_{slugify(REGIONS[region_code])}"
 
     @property
     def native_value(self) -> str:
         """Return the alert type as the sensor state (GREEN when no active alert)."""
         data = self.coordinator.data or {}
-        return data.get(self._region_code, {}).get("alert_type", "GREEN")
+        alerts = data.get(self._region_code, [])
+        return alerts[0].get("alert_type", "GREEN") if alerts else "GREEN"
 
     @property
     def icon(self) -> str:
@@ -99,18 +102,19 @@ class ProcivMadeiraSensor(ProcivMadeiraEntity, SensorEntity):
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return additional alert attributes."""
         data = self.coordinator.data or {}
-        alert = data.get(self._region_code, {})
+        alerts = data.get(self._region_code, [])
+        current = alerts[0] if alerts else {}
         state = self.native_value
         return {
             "region_code": self._region_code,
-            "region": alert.get("region"),
-            "color": ALERT_TYPE_COLOR.get(state, ALERT_TYPE_COLOR["GREEN"]),
+            "region": REGIONS[self._region_code],
             "alert_type": state,
-            "icon": _ALERT_ICONS.get(state, "mdi:alert"),
-            "problem_type": alert.get("problem_type"),
-            "description": alert.get("description"),
-            "start_date": alert.get("start_date"),
-            "end_date": alert.get("end_date"),
+            "color": ALERT_TYPE_COLOR.get(state, ALERT_TYPE_COLOR["GREEN"]),
+            "problem_type": current.get("problem_type"),
+            "description": current.get("description"),
+            "start_date": current.get("start_date"),
+            "end_date": current.get("end_date"),
+            "alerts": alerts,
         }
 
 
@@ -127,13 +131,18 @@ class ProcivMadeiraWorstAlertSensor(ProcivMadeiraEntity, SensorEntity):
         """Initialize the sensor."""
         super().__init__(coordinator)
         self._attr_unique_id = f"{coordinator.config_entry.entry_id}_worst_alert"
+        self.entity_id = "sensor.prociv_madeira_worst_alert"
 
     @property
     def native_value(self) -> str:
         """Return the most severe alert type across all regions."""
         data = self.coordinator.data or {}
         return max(
-            (alert.get("alert_type", "GREEN") for alert in data.values()),
+            (
+                alert.get("alert_type", "GREEN")
+                for alerts in data.values()
+                for alert in alerts
+            ),
             key=lambda t: ALERT_SEVERITY.get(t, 0),
             default="GREEN",
         )
@@ -171,6 +180,7 @@ class ProcivMadeiraLastFetchSensor(ProcivMadeiraEntity, SensorEntity):
         """Initialize the sensor."""
         super().__init__(coordinator)
         self._attr_unique_id = f"{coordinator.config_entry.entry_id}_last_fetch"
+        self.entity_id = "sensor.prociv_madeira_last_fetch"
 
     @property
     def native_value(self) -> datetime | None:

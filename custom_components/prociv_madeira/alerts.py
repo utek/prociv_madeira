@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import colorsys
 import re
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -176,12 +177,39 @@ def _translate_description(pt: str | None) -> str | None:
     return text
 
 
+def _classify_by_hue(hex_color: str) -> str:
+    """Map an unrecognised hex color to an alert level via HSV hue.
+
+    Used as a fallback when the website introduces a shade not in
+    COLOR_TO_ALERT_TYPE, so arbitrary orange variants still map to ORANGE
+    rather than silently collapsing to a severity of 0.
+    """
+    try:
+        h = hex_color.lstrip("#")
+        if len(h) == 3:
+            h = "".join(c * 2 for c in h)
+        r, g, b = (int(h[i : i + 2], 16) / 255.0 for i in (0, 2, 4))
+        hue, sat, _val = colorsys.rgb_to_hsv(r, g, b)
+        if sat < 0.25:  # achromatic / nearly grey → not a warning
+            return "GREEN"
+        hue_deg = hue * 360
+        if hue_deg < 20 or hue_deg >= 340:
+            return "RED"
+        if hue_deg < 45:
+            return "ORANGE"
+        if hue_deg < 75:
+            return "YELLOW"
+        return "GREEN"
+    except Exception:  # noqa: BLE001
+        return "GREEN"
+
+
 def _color_to_alert_type(style: str) -> str | None:
     match = re.search(r"background-color\s*:\s*(#[0-9a-fA-F]{3,6})", style)
     if not match:
         return None
     hex_color = match.group(1).lower()
-    return COLOR_TO_ALERT_TYPE.get(hex_color, hex_color)
+    return COLOR_TO_ALERT_TYPE.get(hex_color) or _classify_by_hue(hex_color)
 
 
 def _parse_datetime(raw: str) -> datetime | None:
@@ -207,29 +235,20 @@ def _parse_date_range(text: str) -> tuple[datetime | None, datetime | None]:
     return None, None
 
 
-def _green_entry(region_code: str) -> dict:
-    return {
-        "region_code": region_code,
-        "region": REGIONS[region_code],
-        "alert_type": "GREEN",
-        "color": ALERT_TYPE_COLOR["GREEN"],
-        "problem_type": None,
-        "description": None,
-        "start_date": None,
-        "end_date": None,
-    }
-
-
-def fetch_alerts() -> dict[str, dict]:
+def fetch_alerts(url: str = URL) -> dict[str, list[dict]]:
     """
-    Return one alert dict per region, defaulting to GREEN if no active alert.
+    Return all alerts per region keyed by region code (CN, CS, PS, RM).
 
-    Keys are region codes: CN, CS, PS, RM.
+    Each value is a list of alert dicts sorted by start_date descending
+    (newest first).  Each dict contains:
+      - region_code, region: identifiers
+      - alert_type: "GREEN", "YELLOW", "ORANGE", or "RED"
+      - color: canonical colour for that level
+      - problem_type, description, start_date, end_date
     """
-    # Start with all regions at GREEN
-    result: dict[str, dict] = {code: _green_entry(code) for code in REGIONS}
+    result: dict[str, list[dict]] = {code: [] for code in REGIONS}
 
-    response = requests.get(URL, headers=HEADERS, timeout=30)
+    response = requests.get(url, headers=HEADERS, timeout=30)
     response.raise_for_status()
 
     soup = BeautifulSoup(response.text, "html.parser")
@@ -261,15 +280,24 @@ def fetch_alerts() -> dict[str, dict]:
         date_text = small_tag.get_text(strip=True) if small_tag else ""
         start_date, end_date = _parse_date_range(date_text)
 
-        result[region_code] = {
-            "region_code": region_code,
-            "region": REGIONS[region_code],
-            "alert_type": alert_type,
-            "color": ALERT_TYPE_COLOR.get(alert_type, ALERT_TYPE_COLOR["GREEN"]),
-            "problem_type": _translate_problem_type(problem_type),
-            "description": _translate_description(anchor.get("data-content") or None),
-            "start_date": start_date.isoformat() if start_date else None,
-            "end_date": end_date.isoformat() if end_date else None,
-        }
+        result[region_code].append(
+            {
+                "region_code": region_code,
+                "region": REGIONS[region_code],
+                "alert_type": alert_type,
+                "color": ALERT_TYPE_COLOR.get(alert_type, ALERT_TYPE_COLOR["GREEN"]),
+                "problem_type": _translate_problem_type(problem_type),
+                "description": _translate_description(
+                    anchor.get("data-content") or None
+                ),
+                "start_date": start_date.isoformat() if start_date else None,
+                "end_date": end_date.isoformat() if end_date else None,
+            }
+        )
+
+    # Sort each region's alerts by start_date descending (newest first).
+    # Alerts without a start_date sort to the end.
+    for alerts in result.values():
+        alerts.sort(key=lambda a: a["start_date"] or "", reverse=True)
 
     return result

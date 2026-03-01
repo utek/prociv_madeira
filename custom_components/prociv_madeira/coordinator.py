@@ -22,11 +22,12 @@ class ProcivMadeiraDataUpdateCoordinator(DataUpdateCoordinator):
 
     config_entry: ProcivMadeiraConfigEntry
     last_fetch: datetime | None = None
+    url: str
 
     async def _async_update_data(self) -> Any:
         """Fetch live alert data from procivmadeira.pt."""
         try:
-            result = await self.hass.async_add_executor_job(fetch_alerts)
+            result = await self.hass.async_add_executor_job(fetch_alerts, self.url)
             self.last_fetch = dt_util.utcnow()
             return result
         except Exception as exception:

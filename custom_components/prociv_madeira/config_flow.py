@@ -7,7 +7,9 @@ from homeassistant import config_entries
 from homeassistant.core import callback
 
 from .const import CONF_SCAN_INTERVAL
+from .const import CONF_URL
 from .const import DEFAULT_SCAN_INTERVAL
+from .const import DEFAULT_URL
 from .const import DOMAIN
 from .const import MAX_SCAN_INTERVAL
 from .const import MIN_SCAN_INTERVAL
@@ -32,7 +34,10 @@ class ProcivMadeiraFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             return self.async_create_entry(
                 title="ProCiv Madeira",
                 data={},
-                options={CONF_SCAN_INTERVAL: user_input[CONF_SCAN_INTERVAL]},
+                options={
+                    CONF_SCAN_INTERVAL: user_input[CONF_SCAN_INTERVAL],
+                    CONF_URL: user_input[CONF_URL],
+                },
             )
 
         return self.async_show_form(
@@ -42,6 +47,7 @@ class ProcivMadeiraFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                     vol.Required(
                         CONF_SCAN_INTERVAL, default=DEFAULT_SCAN_INTERVAL
                     ): _INTERVAL_SCHEMA,
+                    vol.Required(CONF_URL, default=DEFAULT_URL): str,
                 }
             ),
         )
@@ -68,6 +74,7 @@ class ProcivMadeiraOptionsFlowHandler(config_entries.OptionsFlow):
         current_interval = self.config_entry.options.get(
             CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
         )
+        current_url = self.config_entry.options.get(CONF_URL, DEFAULT_URL)
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema(
@@ -75,6 +82,7 @@ class ProcivMadeiraOptionsFlowHandler(config_entries.OptionsFlow):
                     vol.Required(
                         CONF_SCAN_INTERVAL, default=current_interval
                     ): _INTERVAL_SCHEMA,
+                    vol.Required(CONF_URL, default=current_url): str,
                 }
             ),
         )

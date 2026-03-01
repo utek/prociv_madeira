@@ -12,3 +12,6 @@ CONF_SCAN_INTERVAL = "scan_interval"
 DEFAULT_SCAN_INTERVAL = 30  # minutes
 MIN_SCAN_INTERVAL = 5  # minutes
 MAX_SCAN_INTERVAL = 1440  # minutes (24 hours)
+
+CONF_URL = "url"
+DEFAULT_URL = "https://www.procivmadeira.pt/pt/12-avisos.html"

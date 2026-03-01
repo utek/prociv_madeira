@@ -4,10 +4,12 @@
       "user": {
         "description": "Add ProCiv Madeira alerts to Home Assistant.",
         "data": {
-          "scan_interval": "Scan interval (minutes)"
+          "scan_interval": "Scan interval (minutes)",
+          "url": "Data source URL"
         },
         "data_description": {
-          "scan_interval": "How often to fetch alerts from procivmadeira.pt (5–1440 minutes)."
+          "scan_interval": "How often to fetch alerts from procivmadeira.pt (5–1440 minutes).",
+          "url": "URL to fetch alert data from. Leave as default unless you are using a local mirror or alternative source."
         }
       }
     },
@@ -20,10 +22,12 @@
       "init": {
         "title": "ProCiv Madeira Options",
         "data": {
-          "scan_interval": "Scan interval (minutes)"
+          "scan_interval": "Scan interval (minutes)",
+          "url": "Data source URL"
         },
         "data_description": {
-          "scan_interval": "How often to fetch alerts from procivmadeira.pt (5–1440 minutes)."
+          "scan_interval": "How often to fetch alerts from procivmadeira.pt (5–1440 minutes).",
+          "url": "URL to fetch alert data from. Leave as default unless you are using a local mirror or alternative source."
         }
       }
     }
