@@ -36,16 +36,16 @@
     "sensor": {
       "alert": {
         "state": {
-          "GREEN": "Normal",
-          "YELLOW": "Moderate",
-          "ORANGE": "High",
-          "RED": "Extreme"
+          "green": "Normal",
+          "yellow": "Moderate",
+          "orange": "High",
+          "red": "Extreme"
         },
         "state_color": {
-          "GREEN": "success",
-          "YELLOW": "yellow",
-          "ORANGE": "orange",
-          "RED": "red"
+          "green": "success",
+          "yellow": "yellow",
+          "orange": "orange",
+          "red": "red"
         }
       }
     }

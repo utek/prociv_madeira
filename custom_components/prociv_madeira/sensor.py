@@ -43,12 +43,12 @@ async def async_setup_entry(
     )
 
 
-# Icon per alert level – GREEN gets a check icon, not an alert icon.
+# Icon per alert level – green gets a check icon, not an alert icon.
 _ALERT_ICONS: dict[str, str] = {
-    "GREEN": "mdi:check-circle",
-    "YELLOW": "mdi:alert-circle",
-    "ORANGE": "mdi:alert",
-    "RED": "mdi:alert-octagon",
+    "green": "mdi:check-circle",
+    "yellow": "mdi:alert-circle",
+    "orange": "mdi:alert",
+    "red": "mdi:alert-octagon",
 }
 
 
@@ -56,7 +56,7 @@ class ProcivMadeiraSensor(ProcivMadeiraEntity, SensorEntity):
     """ProCiv Madeira alert sensor for a single region."""
 
     _attr_device_class = SensorDeviceClass.ENUM
-    _attr_options = ["GREEN", "YELLOW", "ORANGE", "RED"]
+    _attr_options = ["green", "yellow", "orange", "red"]
     _attr_translation_key = "alert"
     _attr_state_color = True
 
@@ -74,10 +74,10 @@ class ProcivMadeiraSensor(ProcivMadeiraEntity, SensorEntity):
 
     @property
     def native_value(self) -> str:
-        """Return the alert type as the sensor state (GREEN when no active alert)."""
+        """Return the alert type as the sensor state (green when no active alert)."""
         data = self.coordinator.data or {}
         alerts = data.get(self._region_code, [])
-        return alerts[0].get("alert_type", "GREEN") if alerts else "GREEN"
+        return alerts[0].get("alert_type", "green") if alerts else "green"
 
     @property
     def icon(self) -> str:
@@ -92,10 +92,10 @@ class ProcivMadeiraSensor(ProcivMadeiraEntity, SensorEntity):
         Supported on HA 2024.1+; silently unused on older versions.
         """
         return {
-            "GREEN": "green",
-            "YELLOW": "yellow",
-            "ORANGE": "orange",
-            "RED": "red",
+            "green": "green",
+            "yellow": "yellow",
+            "orange": "orange",
+            "red": "red",
         }.get(self.native_value)
 
     @property
@@ -109,7 +109,7 @@ class ProcivMadeiraSensor(ProcivMadeiraEntity, SensorEntity):
             "region_code": self._region_code,
             "region": REGIONS[self._region_code],
             "alert_type": state,
-            "color": ALERT_TYPE_COLOR.get(state, ALERT_TYPE_COLOR["GREEN"]),
+            "color": ALERT_TYPE_COLOR.get(state, ALERT_TYPE_COLOR["green"]),
             "problem_type": current.get("problem_type"),
             "description": current.get("description"),
             "start_date": current.get("start_date"),
@@ -122,7 +122,7 @@ class ProcivMadeiraWorstAlertSensor(ProcivMadeiraEntity, SensorEntity):
     """Sensor that reports the highest-severity alert across all regions."""
 
     _attr_device_class = SensorDeviceClass.ENUM
-    _attr_options = ["GREEN", "YELLOW", "ORANGE", "RED"]
+    _attr_options = ["green", "yellow", "orange", "red"]
     _attr_name = "Worst Alert"
     _attr_translation_key = "alert"
     _attr_state_color = True
@@ -139,12 +139,12 @@ class ProcivMadeiraWorstAlertSensor(ProcivMadeiraEntity, SensorEntity):
         data = self.coordinator.data or {}
         return max(
             (
-                alert.get("alert_type", "GREEN")
+                alert.get("alert_type", "green")
                 for alerts in data.values()
                 for alert in alerts
             ),
             key=lambda t: ALERT_SEVERITY.get(t, 0),
-            default="GREEN",
+            default="green",
         )
 
     @property
@@ -156,10 +156,10 @@ class ProcivMadeiraWorstAlertSensor(ProcivMadeiraEntity, SensorEntity):
     def entity_color(self) -> str | None:
         """Return an HA UI color string matching the worst alert level."""
         return {
-            "GREEN": "green",
-            "YELLOW": "yellow",
-            "ORANGE": "orange",
-            "RED": "red",
+            "green": "green",
+            "yellow": "yellow",
+            "orange": "orange",
+            "red": "red",
         }.get(self.native_value)
 
 

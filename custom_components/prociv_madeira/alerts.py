@@ -132,31 +132,31 @@ _PT_EN: list[tuple[str, str]] = [
 ]
 
 COLOR_TO_ALERT_TYPE = {
-    "#00b050": "GREEN",
-    "#ffd712": "YELLOW",
-    "#ffff00": "YELLOW",
-    "#ffa500": "ORANGE",
-    "#ff8c00": "ORANGE",
-    "#ed7d31": "ORANGE",
-    "#ff0000": "RED",
-    "#cc0000": "RED",
-    "#c00000": "RED",
+    "#00b050": "green",
+    "#ffd712": "yellow",
+    "#ffff00": "yellow",
+    "#ffa500": "orange",
+    "#ff8c00": "orange",
+    "#ed7d31": "orange",
+    "#ff0000": "red",
+    "#cc0000": "red",
+    "#c00000": "red",
 }
 
 # Severity ordering — higher number is more severe
 ALERT_SEVERITY: dict[str, int] = {
-    "GREEN": 0,
-    "YELLOW": 1,
-    "ORANGE": 2,
-    "RED": 3,
+    "green": 0,
+    "yellow": 1,
+    "orange": 2,
+    "red": 3,
 }
 
 # Canonical display color for each alert level (usable as CSS background-color)
 ALERT_TYPE_COLOR: dict[str, str] = {
-    "GREEN": "#00b050",
-    "YELLOW": "#ffd712",
-    "ORANGE": "#ffa500",
-    "RED": "#ff0000",
+    "green": "#00b050",
+    "yellow": "#ffd712",
+    "orange": "#ffa500",
+    "red": "#ff0000",
 }
 
 
@@ -181,7 +181,7 @@ def _classify_by_hue(hex_color: str) -> str:
     """Map an unrecognised hex color to an alert level via HSV hue.
 
     Used as a fallback when the website introduces a shade not in
-    COLOR_TO_ALERT_TYPE, so arbitrary orange variants still map to ORANGE
+    COLOR_TO_ALERT_TYPE, so arbitrary orange variants still map to orange
     rather than silently collapsing to a severity of 0.
     """
     try:
@@ -191,17 +191,17 @@ def _classify_by_hue(hex_color: str) -> str:
         r, g, b = (int(h[i : i + 2], 16) / 255.0 for i in (0, 2, 4))
         hue, sat, _val = colorsys.rgb_to_hsv(r, g, b)
         if sat < 0.25:  # achromatic / nearly grey → not a warning
-            return "GREEN"
+            return "green"
         hue_deg = hue * 360
         if hue_deg < 20 or hue_deg >= 340:
-            return "RED"
+            return "red"
         if hue_deg < 45:
-            return "ORANGE"
+            return "orange"
         if hue_deg < 75:
-            return "YELLOW"
-        return "GREEN"
+            return "yellow"
+        return "green"
     except Exception:  # noqa: BLE001
-        return "GREEN"
+        return "green"
 
 
 def _color_to_alert_type(style: str) -> str | None:
@@ -242,7 +242,7 @@ def fetch_alerts(url: str = URL) -> dict[str, list[dict]]:
     Each value is a list of alert dicts sorted by start_date descending
     (newest first).  Each dict contains:
       - region_code, region: identifiers
-      - alert_type: "GREEN", "YELLOW", "ORANGE", or "RED"
+      - alert_type: "green", "yellow", "orange", or "red"
       - color: canonical colour for that level
       - problem_type, description, start_date, end_date
     """
@@ -271,7 +271,7 @@ def fetch_alerts(url: str = URL) -> dict[str, list[dict]]:
 
         container = anchor.find(class_="alert-container")
         style = container.get("style", "") if container else ""
-        alert_type = _color_to_alert_type(style) or "GREEN"
+        alert_type = _color_to_alert_type(style) or "green"
 
         warning_tag = anchor.find(class_="warning-title")
         problem_type = warning_tag.get_text(strip=True) if warning_tag else None
@@ -285,7 +285,7 @@ def fetch_alerts(url: str = URL) -> dict[str, list[dict]]:
                 "region_code": region_code,
                 "region": REGIONS[region_code],
                 "alert_type": alert_type,
-                "color": ALERT_TYPE_COLOR.get(alert_type, ALERT_TYPE_COLOR["GREEN"]),
+                "color": ALERT_TYPE_COLOR.get(alert_type, ALERT_TYPE_COLOR["green"]),
                 "problem_type": _translate_problem_type(problem_type),
                 "description": _translate_description(
                     anchor.get("data-content") or None

@@ -44,7 +44,7 @@ class ProcivMadeiraAnyAlertBinarySensor(ProcivMadeiraEntity, BinarySensorEntity)
         """Return True if any region has a non-green alert."""
         data = self.coordinator.data or {}
         return any(
-            alert.get("alert_type", "GREEN") != "GREEN"
+            alert.get("alert_type", "green") != "green"
             for alerts in data.values()
             for alert in alerts
         )

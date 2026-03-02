@@ -27,7 +27,7 @@
   // ---------------------------------------------------------------------------
 
   const ALERT_LEVELS = {
-    GREEN: {
+    green: {
       color: '#1B5E20',
       chipBg: 'rgba(27,94,32,0.10)',
       chipBorder: 'rgba(27,94,32,0.25)',
@@ -35,7 +35,7 @@
       label: 'Normal',
       order: 0,
     },
-    YELLOW: {
+    yellow: {
       color: '#C8A000',
       chipBg: 'rgba(200,160,0,0.10)',
       chipBorder: 'rgba(200,160,0,0.28)',
@@ -43,7 +43,7 @@
       label: 'Moderate',
       order: 1,
     },
-    ORANGE: {
+    orange: {
       color: '#BF360C',
       chipBg: 'rgba(191,54,12,0.10)',
       chipBorder: 'rgba(191,54,12,0.28)',
@@ -51,7 +51,7 @@
       label: 'High',
       order: 2,
     },
-    RED: {
+    red: {
       color: '#B71C1C',
       chipBg: 'rgba(183,28,28,0.12)',
       chipBorder: 'rgba(183,28,28,0.30)',
@@ -90,7 +90,7 @@
 
   function isActiveAlert(state) {
     const s = (state ?? '').toUpperCase();
-    return s !== 'GREEN' && s !== 'UNAVAILABLE' && s !== 'UNKNOWN' && s !== '';
+    return s !== 'green' && s !== 'UNAVAILABLE' && s !== 'UNKNOWN' && s !== '';
   }
 
   // Check if an alert is currently active (now is between start and end times, or no end time)
@@ -301,7 +301,7 @@
         },
         {
           name: 'show_all',
-          label: 'Show GREEN (clear) regions',
+          label: 'Show green (clear) regions',
           selector: { boolean: {} },
         },
       ],
@@ -668,7 +668,7 @@
       const cfg = this._config;
       let entities = this._resolveEntities();
 
-      // Filter out GREEN unless show_all is on
+      // Filter out green unless show_all is on
       // Also filter out regions where all alerts start in the future (no current alerts)
       if (!cfg.show_all) {
         entities = entities.filter((e) => {
@@ -690,7 +690,7 @@
       }
 
       // Count every individual alert by severity level across all regions.
-      const alertsByLevel = { RED: 0, ORANGE: 0, YELLOW: 0 };
+      const alertsByLevel = { red: 0, orange: 0, yellow: 0 };
       for (const { stateObj } of entities) {
         for (const a of stateObj.attributes?.alerts ?? []) {
           const t = (a.alert_type ?? '').toUpperCase();
@@ -734,14 +734,14 @@
 
     _headerHtml(cfg, alertsByLevel) {
       const totalActive =
-        alertsByLevel.RED + alertsByLevel.ORANGE + alertsByLevel.YELLOW;
+        alertsByLevel.red + alertsByLevel.orange + alertsByLevel.yellow;
       const hasAlerts = totalActive > 0;
 
       const statusHtml = hasAlerts
         ? [
-            { key: 'RED', level: ALERT_LEVELS.RED },
-            { key: 'ORANGE', level: ALERT_LEVELS.ORANGE },
-            { key: 'YELLOW', level: ALERT_LEVELS.YELLOW },
+            { key: 'red', level: ALERT_LEVELS.red },
+            { key: 'orange', level: ALERT_LEVELS.orange },
+            { key: 'yellow', level: ALERT_LEVELS.yellow },
           ]
             .filter(({ key }) => alertsByLevel[key] > 0)
             .map(
@@ -810,7 +810,7 @@
       // If there are no current alerts, show green/Normal
       const highestCurrentLevel = getHighestCurrentAlertLevel(alerts);
       const hasCurrentAlerts = currentAlerts.length > 0;
-      const level = hasCurrentAlerts ? highestCurrentLevel : ALERT_LEVELS.GREEN;
+      const level = hasCurrentAlerts ? highestCurrentLevel : ALERT_LEVELS.green;
       const color = level?.color ?? 'var(--secondary-text-color)';
       const status = hasCurrentAlerts
         ? (level?.label ?? stateObj.state)
