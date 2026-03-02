@@ -6,20 +6,20 @@
  * Installation: Copy this file to <config>/www/ and add as a Lovelace resource.
  * Usage: Add card type "prociv-madeira-weather-card" in your dashboard.
  *
- * @version 1.5.8
+ * @version 1.6.0
  * @license MIT
  */
 (function () {
   'use strict';
 
-  const CARD_VERSION = '1.5.8';
+  const CARD_VERSION = '1.6.0';
   const CARD_NAME = 'prociv-madeira-weather-card';
   const EDITOR_NAME = 'prociv-madeira-weather-card-editor';
 
   console.info(
     `%c PROCIV-MADEIRA-WEATHER-CARD %c v${CARD_VERSION} `,
     'color: white; background: #1565C0; font-weight: 700; padding: 2px 6px; border-radius: 3px 0 0 3px;',
-    'color: #1565C0; background: white; font-weight: 700; padding: 2px 6px; border-radius: 0 3px 3px 0; border: 1px solid #1565C0;'
+    'color: #1565C0; background: white; font-weight: 700; padding: 2px 6px; border-radius: 0 3px 3px 0; border: 1px solid #1565C0;',
   );
 
   // ---------------------------------------------------------------------------
@@ -66,18 +66,18 @@
   // ---------------------------------------------------------------------------
 
   const PROBLEM_TYPE_ICONS = {
-    'Rain': 'mdi:weather-pouring',
-    'Precipitation': 'mdi:weather-rainy',
-    'Wind': 'mdi:weather-windy',
+    Rain: 'mdi:weather-pouring',
+    Precipitation: 'mdi:weather-rainy',
+    Wind: 'mdi:weather-windy',
     'Rough Seas': 'mdi:waves',
-    'Storm': 'mdi:weather-lightning-rainy',
-    'Thunderstorm': 'mdi:weather-lightning',
-    'Snow': 'mdi:weather-snowy',
-    'Ice': 'mdi:snowflake',
-    'Cold': 'mdi:thermometer-low',
-    'Heat': 'mdi:thermometer-high',
-    'Fog': 'mdi:weather-fog',
-    'Hail': 'mdi:weather-hail',
+    Storm: 'mdi:weather-lightning-rainy',
+    Thunderstorm: 'mdi:weather-lightning',
+    Snow: 'mdi:weather-snowy',
+    Ice: 'mdi:snowflake',
+    Cold: 'mdi:thermometer-low',
+    Heat: 'mdi:thermometer-high',
+    Fog: 'mdi:weather-fog',
+    Hail: 'mdi:weather-hail',
   };
 
   function getProblemIcon(problemType) {
@@ -91,6 +91,37 @@
   function isActiveAlert(state) {
     const s = (state ?? '').toUpperCase();
     return s !== 'GREEN' && s !== 'UNAVAILABLE' && s !== 'UNKNOWN' && s !== '';
+  }
+
+  // Check if an alert is currently active (now is between start and end times, or no end time)
+  function isCurrentAlert(alert) {
+    const now = Date.now();
+    const start = alert.start_date
+      ? new Date(alert.start_date).getTime()
+      : null;
+    const end = alert.end_date ? new Date(alert.end_date).getTime() : null;
+
+    // If no start date, assume it's current
+    if (!start) return true;
+    // If now is before start, it's a future alert
+    if (now < start) return false;
+    // If there's an end date and now is after it, it's expired
+    if (end && now > end) return false;
+    // Otherwise it's current
+    return true;
+  }
+
+  // Get the highest severity level from current alerts
+  function getHighestCurrentAlertLevel(alerts) {
+    let highest = null;
+    for (const alert of alerts) {
+      if (!isCurrentAlert(alert)) continue;
+      const level = getAlertLevel(alert.alert_type);
+      if (level && (!highest || level.order > highest.order)) {
+        highest = level;
+      }
+    }
+    return highest;
   }
 
   // ---------------------------------------------------------------------------
@@ -134,6 +165,13 @@
   function normalizeEntities(entities) {
     if (!entities || !entities.length) return [];
     return entities.map((e) => (typeof e === 'string' ? { entity: e } : e));
+  }
+
+  // Sanitize strings before interpolating into HTML to prevent XSS.
+  const _escapeEl = document.createElement('div');
+  function escapeHtml(str) {
+    _escapeEl.textContent = str ?? '';
+    return _escapeEl.innerHTML;
   }
 
   // ---------------------------------------------------------------------------
@@ -440,7 +478,10 @@
       picker.value = item.entity ?? '';
       picker.allowCustomEntity = false;
       picker.addEventListener('value-changed', (e) => {
-        this._config.entities[idx] = { ...this._config.entities[idx], entity: e.detail.value };
+        this._config.entities[idx] = {
+          ...this._config.entities[idx],
+          entity: e.detail.value,
+        };
         this._fire();
       });
 
@@ -494,7 +535,7 @@
 
     _fire() {
       this.dispatchEvent(
-        new CustomEvent('config-changed', { detail: { config: this._config } })
+        new CustomEvent('config-changed', { detail: { config: this._config } }),
       );
     }
   }
@@ -541,7 +582,7 @@
       const hasPrefix = !!config.entity_prefix;
       if (!hasEntities && !hasPrefix) {
         throw new Error(
-          'Prociv Madeira Weather Card: provide "entity_prefix" or "entities".'
+          'Prociv Madeira Weather Card: provide "entity_prefix" or "entities".',
         );
       }
       this._config = { ...DEFAULT_CONFIG, ...config };
@@ -549,8 +590,31 @@
     }
 
     set hass(hass) {
+      const prev = this._hass;
       this._hass = hass;
-      this._render();
+      if (this._statesChanged(prev, hass)) this._render();
+    }
+
+    // Only re-render when relevant entity states have actually changed.
+    _statesChanged(prev, next) {
+      if (!prev || !this._config) return true;
+      const { entities, entity_prefix } = this._config;
+      const ids =
+        entities && entities.length > 0
+          ? normalizeEntities(entities)
+              .filter((e) => e.entity)
+              .map((e) => e.entity)
+          : Object.keys(next.states).filter((id) =>
+              id.startsWith(entity_prefix),
+            );
+      for (const id of ids) {
+        if (prev.states[id] !== next.states[id]) return true;
+      }
+      // Also check the last_fetch sensor
+      const base = (entity_prefix ?? '').replace(/alert_$/, '');
+      const fetchId = `${base}last_fetch`;
+      if (prev.states[fetchId] !== next.states[fetchId]) return true;
+      return false;
     }
 
     getCardSize() {
@@ -581,7 +645,7 @@
         .filter(
           ([id, stateObj]) =>
             id.startsWith(entity_prefix) &&
-            stateObj.attributes?.region_code != null
+            stateObj.attributes?.region_code != null,
         )
         .map(([id, stateObj]) => ({ id, stateObj, customName: null }));
     }
@@ -605,8 +669,15 @@
       let entities = this._resolveEntities();
 
       // Filter out GREEN unless show_all is on
+      // Also filter out regions where all alerts start in the future (no current alerts)
       if (!cfg.show_all) {
-        entities = entities.filter((e) => isActiveAlert(e.stateObj.state));
+        entities = entities.filter((e) => {
+          const alerts = e.stateObj.attributes?.alerts ?? [];
+          // Keep if there are current alerts OR if there are any alerts (show future too)
+          // If there are no current alerts but there are future alerts, we still show them
+          // The coloring will be handled in _regionSectionHtml
+          return alerts.length > 0;
+        });
       }
 
       // Sort worst-first when requested
@@ -621,7 +692,7 @@
       // Count every individual alert by severity level across all regions.
       const alertsByLevel = { RED: 0, ORANGE: 0, YELLOW: 0 };
       for (const { stateObj } of entities) {
-        for (const a of (stateObj.attributes?.alerts ?? [])) {
+        for (const a of stateObj.attributes?.alerts ?? []) {
           const t = (a.alert_type ?? '').toUpperCase();
           if (t in alertsByLevel) alertsByLevel[t]++;
         }
@@ -637,57 +708,65 @@
         <style>${this._styles(cols)}</style>
         <ha-card>
           ${cfg.show_header !== false ? this._headerHtml(cfg, alertsByLevel) : ''}
-          ${showContent ? `
+          ${
+            showContent
+              ? `
           <div class="card-content">
             ${hasVisible ? this._alertsHtml(entities, cfg) : this._noAlertsHtml(cfg)}
-          </div>` : ''}
+          </div>`
+              : ''
+          }
         </ha-card>
       `;
 
       // Toggle card expand/collapse when the header is clicked.
       if (cfg.show_header !== false) {
-        this.shadowRoot.querySelector('.card-header')
+        this.shadowRoot
+          .querySelector('.card-header')
           ?.addEventListener('click', () => {
             this._cardExpanded = !this._cardExpanded;
             this._render();
           });
       }
-
-      this._startTick();
     }
 
     // ── Header ─────────────────────────────────────────────────────────────────
 
     _headerHtml(cfg, alertsByLevel) {
-      const totalActive = alertsByLevel.RED + alertsByLevel.ORANGE + alertsByLevel.YELLOW;
+      const totalActive =
+        alertsByLevel.RED + alertsByLevel.ORANGE + alertsByLevel.YELLOW;
       const hasAlerts = totalActive > 0;
 
       const statusHtml = hasAlerts
         ? [
-            { key: 'RED',    level: ALERT_LEVELS.RED    },
+            { key: 'RED', level: ALERT_LEVELS.RED },
             { key: 'ORANGE', level: ALERT_LEVELS.ORANGE },
             { key: 'YELLOW', level: ALERT_LEVELS.YELLOW },
           ]
             .filter(({ key }) => alertsByLevel[key] > 0)
-            .map(({ key, level }) => `
+            .map(
+              ({ key, level }) => `
               <div class="level-chip" style="background:${level.chipBg};border-color:${level.chipBorder};color:${level.color};">
                 <ha-icon icon="${level.icon}" style="--mdc-icon-size:12px;"></ha-icon>
                 <span>${alertsByLevel[key]}</span>
-              </div>`)
+              </div>`,
+            )
             .join('')
         : `<div class="badge badge--clear">
              <ha-icon icon="mdi:check-circle"></ha-icon>
              <span>All Clear</span>
            </div>`;
 
-      const chevronCls = this._cardExpanded ? 'card-chevron card-chevron--open' : 'card-chevron';
+      const chevronCls = this._cardExpanded
+        ? 'card-chevron card-chevron--open'
+        : 'card-chevron';
 
       return `
         <div class="card-header">
           <div class="header-icon">
             <ha-icon icon="mdi:weather-cloudy-alert"></ha-icon>
           </div>
-          <span class="header-title">${cfg.title || DEFAULT_CONFIG.title}</span>
+          <span class="header-title">${escapeHtml(cfg.title || DEFAULT_CONFIG.title)}</span>
           <div class="header-status">${statusHtml}</div>
           <ha-icon icon="mdi:chevron-down" class="${chevronCls}"></ha-icon>
         </div>
@@ -701,7 +780,7 @@
       return `
         <div class="no-alerts">
           <ha-icon icon="mdi:check-circle-outline" class="no-alerts-icon"></ha-icon>
-          <span class="no-alerts-text">${cfg.no_alerts_message || DEFAULT_CONFIG.no_alerts_message}</span>
+          <span class="no-alerts-text">${escapeHtml(cfg.no_alerts_message || DEFAULT_CONFIG.no_alerts_message)}</span>
         </div>
       `;
     }
@@ -709,7 +788,9 @@
     // ── Regions list ───────────────────────────────────────────────────────────
 
     _alertsHtml(entities, cfg) {
-      const sections = entities.map((e) => this._regionSectionHtml(e, cfg)).join('');
+      const sections = entities
+        .map((e) => this._regionSectionHtml(e, cfg))
+        .join('');
       const updatedAt = cfg.show_last_updated ? this._updatedAtHtml() : '';
       return `<div class="regions-list">${sections}</div>${updatedAt}`;
     }
@@ -721,36 +802,144 @@
       // customName (set in the editor) > sensor region attribute > entity id
       const regionName = customName ?? attrs.region ?? id;
 
-      const level = getAlertLevel(stateObj.state);
+      // Split alerts into current and future
+      const currentAlerts = alerts.filter((a) => isCurrentAlert(a));
+      const futureAlerts = alerts.filter((a) => !isCurrentAlert(a));
+
+      // Determine region color/status based on highest current alert level
+      // If there are no current alerts, show green/Normal
+      const highestCurrentLevel = getHighestCurrentAlertLevel(alerts);
+      const hasCurrentAlerts = currentAlerts.length > 0;
+      const level = hasCurrentAlerts ? highestCurrentLevel : ALERT_LEVELS.GREEN;
       const color = level?.color ?? 'var(--secondary-text-color)';
-      const headerIcon = cfg.show_icon !== false
-        ? (level?.icon ?? 'mdi:weather-cloudy-alert')
-        : null;
+      const status = hasCurrentAlerts
+        ? (level?.label ?? stateObj.state)
+        : 'Normal';
+      const headerIcon =
+        cfg.show_icon !== false
+          ? (level?.icon ?? 'mdi:weather-cloudy-alert')
+          : null;
 
       const iconHtml = headerIcon
         ? `<ha-icon icon="${headerIcon}" style="color:${color};--mdc-icon-size:16px;" class="region-icon"></ha-icon>`
         : '';
 
-      const sorted = [...alerts].sort((a, b) => {
+      // Sort current and future alerts by start date
+      const sortByDate = (a, b) => {
         if (!a.start_date) return 1;
         if (!b.start_date) return -1;
-        return a.start_date < b.start_date ? -1 : a.start_date > b.start_date ? 1 : 0;
-      });
-      const panelsHtml = sorted.length > 0
-        ? sorted.map((a) => this._alertPanelHtml(a, cfg)).join('')
-        : `<div class="no-region-alerts">No alerts</div>`;
+        return a.start_date < b.start_date
+          ? -1
+          : a.start_date > b.start_date
+            ? 1
+            : 0;
+      };
+      currentAlerts.sort(sortByDate);
+      futureAlerts.sort(sortByDate);
+
+      // Render current alerts directly under region name (always visible)
+      const currentAlertsHtml =
+        currentAlerts.length > 0
+          ? currentAlerts
+              .map((a) => this._currentAlertHtml(a, cfg, color))
+              .join('')
+          : '';
+
+      // Render future alerts in collapsible section
+      const futurePanelsHtml =
+        futureAlerts.length > 0
+          ? futureAlerts.map((a) => this._alertPanelHtml(a, cfg)).join('')
+          : '';
 
       const isOpen = !this._collapsedRegions.has(id);
+      const hasFutureAlerts = futureAlerts.length > 0;
+
       return `
         <details class="region-section" data-region="${id}"${isOpen ? ' open' : ''}>
           <summary class="region-header">
             ${iconHtml}
-            <span class="region-name" style="color:${color};">${regionName}</span>
-            <span class="region-badge" style="color:${color};">${level?.label ?? stateObj.state}</span>
+            <span class="region-name" style="color:${color};">${escapeHtml(regionName)}</span>
+            <span class="region-badge" style="color:${color};">${status}</span>
             <ha-icon icon="mdi:chevron-down" class="chevron-icon" style="color:${color};--mdc-icon-size:14px;"></ha-icon>
           </summary>
-          <div class="alert-panels">
-            ${panelsHtml}
+          ${currentAlertsHtml ? `<div class="current-alerts">${currentAlertsHtml}</div>` : ''}
+          ${
+            hasFutureAlerts
+              ? `
+          <details class="future-alerts-section">
+            <summary class="future-alerts-header">
+              <span>Future Alerts (${futureAlerts.length})</span>
+              <ha-icon icon="mdi:chevron-down" class="future-alerts-chevron" style="--mdc-icon-size:12px;"></ha-icon>
+            </summary>
+            <div class="alert-panels">
+              ${futurePanelsHtml}
+            </div>
+          </details>`
+              : ''
+          }
+        </details>
+      `;
+    }
+
+    // Render a current alert using the same panel layout as future alerts.
+    _currentAlertHtml(alert, cfg, regionColor) {
+      const level = getAlertLevel(alert.alert_type);
+      const color =
+        level?.color ?? regionColor ?? 'var(--secondary-text-color)';
+      const bg = level?.chipBg ?? 'rgba(0,0,0,0.05)';
+      const border = level?.chipBorder ?? 'rgba(0,0,0,0.10)';
+      const icon = alert.problem_type
+        ? getProblemIcon(alert.problem_type)
+        : (level?.icon ?? 'mdi:weather-cloudy-alert');
+
+      const typeHtml =
+        cfg.show_problem_type !== false && alert.problem_type
+          ? `<span class="panel-type" style="color:${color};">${escapeHtml(alert.problem_type)}</span>`
+          : '';
+
+      const levelBadge = `<span class="panel-level-badge" style="color:${color};">${escapeHtml(level?.label ?? alert.alert_type)}</span>`;
+
+      const dateRange =
+        cfg.show_dates !== false
+          ? formatDateRange(alert.start_date, alert.end_date)
+          : null;
+      const dateHtml = dateRange
+        ? `<div class="panel-dates" style="color:${color};">${escapeHtml(dateRange)}</div>`
+        : '';
+
+      const descHtml = alert.description
+        ? `<div class="panel-description" style="color:${color};">${escapeHtml(alert.description)}</div>`
+        : '';
+
+      const iconHtml = `<ha-icon icon="${escapeHtml(icon)}" style="color:${color};--mdc-icon-size:18px;" class="panel-icon"></ha-icon>`;
+      const bodyHtml = `
+        <div class="panel-body">
+          <div class="panel-top">${typeHtml}${typeHtml ? '<span class="panel-sep"> · </span>' : ''}${levelBadge}</div>
+          ${dateHtml}
+        </div>`;
+
+      // No description — static panel.
+      if (!descHtml) {
+        return `
+          <div class="alert-panel" style="background:${bg};border-color:${border};">
+            ${iconHtml}
+            ${bodyHtml}
+          </div>
+        `;
+      }
+
+      // Has description — collapsible panel.
+      const alertKey = `current_${alert.region_code}__${alert.start_date || alert.problem_type || ''}`;
+      const isOpen = this._expandedAlerts.has(alertKey);
+      return `
+        <details class="alert-panel" data-alert="${escapeHtml(alertKey)}"${isOpen ? ' open' : ''} style="background:${bg};border-color:${border};">
+          <summary class="panel-summary">
+            ${iconHtml}
+            ${bodyHtml}
+            <ha-icon icon="mdi:chevron-down" class="alert-chevron" style="color:${color};--mdc-icon-size:12px;"></ha-icon>
+          </summary>
+          <div class="panel-details">
+            ${descHtml}
           </div>
         </details>
       `;
@@ -767,25 +956,25 @@
 
       const typeHtml =
         cfg.show_problem_type !== false && alert.problem_type
-          ? `<span class="panel-type" style="color:${color};">${alert.problem_type}</span>`
+          ? `<span class="panel-type" style="color:${color};">${escapeHtml(alert.problem_type)}</span>`
           : '';
 
-      const levelBadge =
-        `<span class="panel-level-badge" style="color:${color};">${level?.label ?? alert.alert_type}</span>`;
+      const levelBadge = `<span class="panel-level-badge" style="color:${color};">${escapeHtml(level?.label ?? alert.alert_type)}</span>`;
 
-      const dateRange = cfg.show_dates !== false
-        ? formatDateRange(alert.start_date, alert.end_date)
-        : null;
+      const dateRange =
+        cfg.show_dates !== false
+          ? formatDateRange(alert.start_date, alert.end_date)
+          : null;
       const dateHtml = dateRange
-        ? `<div class="panel-dates" style="color:${color};">${dateRange}</div>`
+        ? `<div class="panel-dates" style="color:${color};">${escapeHtml(dateRange)}</div>`
         : '';
 
       const descHtml = alert.description
-        ? `<div class="panel-description" style="color:${color};">${alert.description}</div>`
+        ? `<div class="panel-description" style="color:${color};">${escapeHtml(alert.description)}</div>`
         : '';
 
       // Dates are always visible; only the description is toggled.
-      const iconHtml = `<ha-icon icon="${icon}" style="color:${color};--mdc-icon-size:18px;" class="panel-icon"></ha-icon>`;
+      const iconHtml = `<ha-icon icon="${escapeHtml(icon)}" style="color:${color};--mdc-icon-size:18px;" class="panel-icon"></ha-icon>`;
       const bodyHtml = `
         <div class="panel-body">
           <div class="panel-top">${typeHtml}${typeHtml ? '<span class="panel-sep"> · </span>' : ''}${levelBadge}</div>
@@ -806,7 +995,7 @@
       const alertKey = `${alert.region_code}__${alert.start_date || alert.problem_type || ''}`;
       const isOpen = this._expandedAlerts.has(alertKey);
       return `
-        <details class="alert-panel" data-alert="${alertKey}"${isOpen ? ' open' : ''} style="background:${bg};border-color:${border};">
+        <details class="alert-panel" data-alert="${escapeHtml(alertKey)}"${isOpen ? ' open' : ''} style="background:${bg};border-color:${border};">
           <summary class="panel-summary">
             ${iconHtml}
             ${bodyHtml}
@@ -830,7 +1019,9 @@
       const ts = sensor?.state;
       if (!ts || ts === 'unavailable' || ts === 'unknown') return '';
       const rel = relativeTime(ts);
-      return rel ? `<div class="updated-at" data-ts="${ts}">Updated ${rel}</div>` : '';
+      return rel
+        ? `<div class="updated-at" data-ts="${ts}">Updated ${rel}</div>`
+        : '';
     }
 
     // Starts the 30-second relative-time ticker (idempotent — safe to call repeatedly).
@@ -971,10 +1162,10 @@
           text-align: center;
         }
 
-        /* ── Regions list ───────────────────────── */
+        /* ── Regions list (grid via columns config) */
         .regions-list {
-          display: flex;
-          flex-direction: column;
+          display: grid;
+          grid-template-columns: repeat(${cols}, 1fr);
           gap: 14px;
         }
 
@@ -1033,7 +1224,7 @@
           display: flex;
           flex-direction: column;
           gap: 5px;
-          padding-left: 6px;
+          padding-top: 4px;
         }
 
         .alert-panel {
@@ -1136,6 +1327,48 @@
           color: var(--secondary-text-color);
           opacity: 0.55;
           padding: 3px 0;
+        }
+
+        /* ── Current alerts (always visible) ─────── */
+        .current-alerts {
+          display: flex;
+          flex-direction: column;
+          gap: 5px;
+          padding: 6px 0 6px 6px;
+        }
+
+        /* ── Future alerts collapsible ──────────────── */
+        .future-alerts-section {
+          margin-top: 4px;
+          padding-left: 6px;
+        }
+
+        .future-alerts-header {
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          font-size: 10px;
+          font-weight: 700;
+          color: var(--secondary-text-color);
+          text-transform: uppercase;
+          letter-spacing: 0.08em;
+          padding: 6px 0 4px;
+          opacity: 0.6;
+          cursor: pointer;
+          user-select: none;
+          list-style: none;
+        }
+
+        .future-alerts-header::-webkit-details-marker { display: none; }
+
+        .future-alerts-chevron {
+          color: var(--secondary-text-color);
+          opacity: 0.6;
+          transition: transform 0.2s ease;
+        }
+
+        .future-alerts-section[open] .future-alerts-chevron {
+          transform: rotate(180deg);
         }
 
         /* ── Last updated ───────────────────────── */
