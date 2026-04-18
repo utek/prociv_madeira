@@ -37,7 +37,6 @@ class ProcivMadeiraRefreshButton(ProcivMadeiraEntity, ButtonEntity):
         """Initialize the button."""
         super().__init__(coordinator)
         self._attr_unique_id = f"{coordinator.config_entry.entry_id}_refresh"
-        self.entity_id = "button.prociv_madeira_refresh_data"
 
     async def async_press(self) -> None:
         """Force an immediate data fetch, bypassing the normal poll interval."""

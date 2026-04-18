@@ -5,9 +5,9 @@
   "config_flow": true,
   "dependencies": ["frontend", "http"],
   "documentation": "https://github.com/utek/prociv_madeira",
-  "requires_homeassistant": "2024.4.0",
+  "homeassistant": "2024.4.0",
   "iot_class": "cloud_polling",
-  "requirements": ["requests==2.32.5", "beautifulsoup4==4.14.3"],
+  "requirements": ["beautifulsoup4==4.14.3"],
   "issue_tracker": "https://github.com/utek/prociv_madeira/issues",
   "version": "0.1.0"
 }

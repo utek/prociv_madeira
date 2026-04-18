@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import colorsys
+import logging
 import re
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-import requests
+import aiohttp
 from bs4 import BeautifulSoup
+
+_LOGGER = logging.getLogger(__name__)
 
 MADEIRA_TZ = ZoneInfo("Atlantic/Madeira")
 
@@ -201,6 +204,7 @@ def _classify_by_hue(hex_color: str) -> str:
             return "yellow"
         return "green"
     except Exception:  # noqa: BLE001
+        _LOGGER.debug("Failed to classify color %s by hue", hex_color, exc_info=True)
         return "green"
 
 
@@ -235,7 +239,9 @@ def _parse_date_range(text: str) -> tuple[datetime | None, datetime | None]:
     return None, None
 
 
-def fetch_alerts(url: str = URL) -> dict[str, list[dict]]:
+async def fetch_alerts(
+    session: aiohttp.ClientSession, url: str = URL
+) -> dict[str, list[dict]]:
     """
     Return all alerts per region keyed by region code (CN, CS, PS, RM).
 
@@ -248,10 +254,12 @@ def fetch_alerts(url: str = URL) -> dict[str, list[dict]]:
     """
     result: dict[str, list[dict]] = {code: [] for code in REGIONS}
 
-    response = requests.get(url, headers=HEADERS, timeout=30)
-    response.raise_for_status()
+    timeout = aiohttp.ClientTimeout(total=30)
+    async with session.get(url, headers=HEADERS, timeout=timeout) as response:
+        response.raise_for_status()
+        text = await response.text()
 
-    soup = BeautifulSoup(response.text, "html.parser")
+    soup = BeautifulSoup(text, "html.parser")
     alerts_wrapper = soup.find(class_="alerts-wrapper")
     if not alerts_wrapper:
         return result

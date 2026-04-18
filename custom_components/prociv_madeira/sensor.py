@@ -9,7 +9,6 @@ from typing import Any
 from homeassistant.components.sensor import SensorDeviceClass
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.helpers.entity import EntityCategory
-from homeassistant.util import slugify
 
 from .alerts import ALERT_SEVERITY
 from .alerts import ALERT_TYPE_COLOR
@@ -58,7 +57,6 @@ class ProcivMadeiraSensor(ProcivMadeiraEntity, SensorEntity):
     _attr_device_class = SensorDeviceClass.ENUM
     _attr_options = ["green", "yellow", "orange", "red"]
     _attr_translation_key = "alert"
-    _attr_state_color = True
 
     def __init__(
         self,
@@ -70,7 +68,6 @@ class ProcivMadeiraSensor(ProcivMadeiraEntity, SensorEntity):
         self._region_code = region_code
         self._attr_unique_id = f"{coordinator.config_entry.entry_id}_{region_code}"
         self._attr_name = REGIONS[region_code]
-        self.entity_id = f"sensor.prociv_madeira_alert_{slugify(REGIONS[region_code])}"
 
     @property
     def native_value(self) -> str:
@@ -125,13 +122,11 @@ class ProcivMadeiraWorstAlertSensor(ProcivMadeiraEntity, SensorEntity):
     _attr_options = ["green", "yellow", "orange", "red"]
     _attr_name = "Worst Alert"
     _attr_translation_key = "alert"
-    _attr_state_color = True
 
     def __init__(self, coordinator: ProcivMadeiraDataUpdateCoordinator) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator)
         self._attr_unique_id = f"{coordinator.config_entry.entry_id}_worst_alert"
-        self.entity_id = "sensor.prociv_madeira_worst_alert"
 
     @property
     def native_value(self) -> str:
@@ -180,7 +175,6 @@ class ProcivMadeiraLastFetchSensor(ProcivMadeiraEntity, SensorEntity):
         """Initialize the sensor."""
         super().__init__(coordinator)
         self._attr_unique_id = f"{coordinator.config_entry.entry_id}_last_fetch"
-        self.entity_id = "sensor.prociv_madeira_last_fetch"
 
     @property
     def native_value(self) -> datetime | None:

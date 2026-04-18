@@ -37,7 +37,6 @@ class ProcivMadeiraAnyAlertBinarySensor(ProcivMadeiraEntity, BinarySensorEntity)
         """Initialize the binary sensor."""
         super().__init__(coordinator)
         self._attr_unique_id = f"{coordinator.config_entry.entry_id}_any_alert"
-        self.entity_id = "binary_sensor.prociv_madeira_any_active_alert"
 
     @property
     def is_on(self) -> bool:

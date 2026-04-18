@@ -30,15 +30,19 @@ class ProcivMadeiraFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         if self._async_current_entries():
             return self.async_abort(reason="already_configured")
 
+        errors: dict[str, str] = {}
         if user_input is not None:
-            return self.async_create_entry(
-                title="ProCiv Madeira",
-                data={},
-                options={
-                    CONF_SCAN_INTERVAL: user_input[CONF_SCAN_INTERVAL],
-                    CONF_URL: user_input[CONF_URL],
-                },
-            )
+            if not user_input[CONF_URL].startswith(("http://", "https://")):
+                errors["url"] = "invalid_url"
+            if not errors:
+                return self.async_create_entry(
+                    title="ProCiv Madeira",
+                    data={},
+                    options={
+                        CONF_SCAN_INTERVAL: user_input[CONF_SCAN_INTERVAL],
+                        CONF_URL: user_input[CONF_URL],
+                    },
+                )
 
         return self.async_show_form(
             step_id="user",
@@ -50,6 +54,7 @@ class ProcivMadeiraFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                     vol.Required(CONF_URL, default=DEFAULT_URL): str,
                 }
             ),
+            errors=errors,
         )
 
     @staticmethod
@@ -68,8 +73,12 @@ class ProcivMadeiraOptionsFlowHandler(config_entries.OptionsFlow):
         self, user_input: dict | None = None
     ) -> config_entries.ConfigFlowResult:
         """Handle options flow."""
+        errors: dict[str, str] = {}
         if user_input is not None:
-            return self.async_create_entry(data=user_input)
+            if not user_input[CONF_URL].startswith(("http://", "https://")):
+                errors["url"] = "invalid_url"
+            if not errors:
+                return self.async_create_entry(data=user_input)
 
         current_interval = self.config_entry.options.get(
             CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
@@ -85,4 +94,5 @@ class ProcivMadeiraOptionsFlowHandler(config_entries.OptionsFlow):
                     vol.Required(CONF_URL, default=current_url): str,
                 }
             ),
+            errors=errors,
         )
