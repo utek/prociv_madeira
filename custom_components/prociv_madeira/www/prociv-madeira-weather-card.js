@@ -64,9 +64,9 @@
       order: 1,
     },
     orange: {
-      color: '#BF360C',
-      chipBg: 'rgba(191,54,12,0.10)',
-      chipBorder: 'rgba(191,54,12,0.28)',
+      color: '#E65100',
+      chipBg: 'rgba(230,81,0,0.10)',
+      chipBorder: 'rgba(230,81,0,0.28)',
       icon: 'mdi:alert',
       label: 'High',
       order: 2,

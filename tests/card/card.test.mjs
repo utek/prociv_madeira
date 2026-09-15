@@ -259,7 +259,7 @@ test('shows the level in effect with its colour and a header chip', () => {
   const html = render({}, southCoastHeat());
 
   assert.match(html, /class="region-badge"[^>]*>High</);
-  assert.ok(html.includes('#BF360C'));
+  assert.ok(html.includes('#E65100'));
   assert.ok(html.includes('class="level-chip"'));
   assert.ok(!html.includes('All Clear'));
 });

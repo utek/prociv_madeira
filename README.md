@@ -10,15 +10,19 @@ Requires Home Assistant 2026.9.2 or newer.
 
 ### HACS
 
-1. In HACS, open the menu (⋮) → **Custom repositories** and add `https://github.com/utek/prociv_madeira` with the type **Integration**.
+[![Open your Home Assistant instance and open this repository in HACS.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=utek&repository=prociv_madeira&category=integration)
+
+1. Use the button above, or in HACS open the menu (⋮) → **Custom repositories** and add `https://github.com/utek/prociv_madeira` with the type **Integration**.
 2. Install **ProCiv Madeira** and restart Home Assistant.
-3. Add the integration via **Settings → Devices & Services → Add Integration → ProCiv Madeira**.
+3. Add the integration with the button below, or via **Settings → Devices & Services → Add Integration → ProCiv Madeira**.
+
+[![Open your Home Assistant instance and start setting up ProCiv Madeira.](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=prociv_madeira)
 
 ### Manual
 
 1. Copy the `custom_components/prociv_madeira` folder to your Home Assistant `custom_components` directory.
 2. Restart Home Assistant.
-3. Add the integration via **Settings → Devices & Services → Add Integration → ProCiv Madeira**.
+3. Add the integration with the button above, or via **Settings → Devices & Services → Add Integration → ProCiv Madeira**.
 
 While you add the integration it checks that the IPMA feed can be reached. Only one instance can be configured.
 
@@ -110,6 +114,61 @@ entities:
   - sensor.prociv_madeira_weather_alerts_south_coast
   - sensor.prociv_madeira_weather_alerts_porto_santo
   - sensor.prociv_madeira_weather_alerts_mountainous_regions
+```
+
+### Mushroom card example
+
+With [Mushroom](https://github.com/piitaya/lovelace-mushroom) installed, this template card shows one region only while it has a warning in effect. It lists each warning's hazard, local start and end time and IPMA's description (in Portuguese), and the next upcoming warning. The icon follows the hazard, its colour follows the level, and the badge counts upcoming warnings, coloured by the most severe. Use another region's sensor for its own card.
+
+```yaml
+type: custom:mushroom-template-card
+entity: sensor.prociv_madeira_weather_alerts_south_coast
+primary: "{{ state_attr(entity, 'region') }} · {{ state_translated(entity) }}"
+secondary: |-
+  {%- set fmt = '%-d %b %H:%M' -%}
+  {%- set levels = {'yellow': 'Moderate', 'orange': 'High', 'red': 'Extreme'} -%}
+  {%- for alert in state_attr(entity, 'alerts') or [] -%}
+  {%- if not loop.first %}{{ '\n' }}{% endif -%}
+  {{ alert.problem_type }}: {{ (alert.start_date | as_datetime | as_local).strftime(fmt) }} – {{ (alert.end_date | as_datetime | as_local).strftime(fmt) }}
+  {%- if alert.description %}{{ '\n' ~ alert.description }}{% endif -%}
+  {%- endfor -%}
+  {%- set upcoming = state_attr(entity, 'upcoming_alerts') or [] -%}
+  {%- if upcoming -%}
+  {{ '\n' }}Next: {{ upcoming[0].problem_type }} ({{ levels.get(upcoming[0].alert_type, upcoming[0].alert_type) }}) from {{ (upcoming[0].start_date | as_datetime | as_local).strftime(fmt) }}
+  {%- if upcoming | length > 1 %} (+{{ upcoming | length - 1 }} more){% endif -%}
+  {%- endif -%}
+icon: |-
+  {%- set icons = {
+    'Heat': 'mdi:thermometer-high',
+    'Cold': 'mdi:thermometer-low',
+    'Wind': 'mdi:weather-windy',
+    'Rough Seas': 'mdi:waves',
+    'Precipitation': 'mdi:weather-rainy',
+    'Thunderstorm': 'mdi:weather-lightning',
+    'Snow': 'mdi:weather-snowy',
+    'Fog': 'mdi:weather-fog'
+  } -%}
+  {{ icons.get(state_attr(entity, 'problem_type'), 'mdi:weather-cloudy-alert') }}
+color: '{{ states(entity) }}'
+badge_text: |-
+  {%- set count = (state_attr(entity, 'upcoming_alerts') or []) | length -%}
+  {%- if count %}{{ count }}{% endif -%}
+badge_color: |-
+  {%- set levels = (state_attr(entity, 'upcoming_alerts') or []) | map(attribute='alert_type') | list -%}
+  {%- if 'red' in levels %}red{% elif 'orange' in levels %}orange{% elif levels %}yellow{% endif -%}
+multiline_secondary: true
+tap_action:
+  action: more-info
+visibility:
+  - condition: state
+    entity: sensor.prociv_madeira_weather_alerts_south_coast
+    state:
+      - yellow
+      - orange
+      - red
+grid_options:
+  rows: auto
+  columns: full
 ```
 
 ### Upgrading from 0.1.x
