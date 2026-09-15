@@ -1,30 +1,22 @@
-"""Alert fetching and parsing for ProCiv Madeira."""
+"""Alert fetching and parsing for ProCiv Madeira (IPMA weather warnings)."""
 
 from __future__ import annotations
 
-import colorsys
-import logging
-import re
+from dataclasses import dataclass
+from datetime import UTC
 from datetime import datetime
-from zoneinfo import ZoneInfo
+from typing import TYPE_CHECKING
+from typing import Any
 
 import aiohttp
-from bs4 import BeautifulSoup
 
-_LOGGER = logging.getLogger(__name__)
+if TYPE_CHECKING:
+    from collections.abc import Iterable
+    from collections.abc import Mapping
 
-MADEIRA_TZ = ZoneInfo("Atlantic/Madeira")
-
-URL = "https://www.procivmadeira.pt/pt/12-avisos.html"
-
-HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
-        "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-    ),
-    "Accept-Language": "pt-PT,pt;q=0.9,en;q=0.8",
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-}
+# IPMA open-data weather warnings (up to 3 days ahead, times in UTC).
+URL = "https://api.ipma.pt/open-data/forecast/warnings/warnings_www.json"
+FETCH_TIMEOUT = 30  # seconds
 
 # All known Madeira regions: code -> full name (English)
 REGIONS: dict[str, str] = {
@@ -34,116 +26,32 @@ REGIONS: dict[str, str] = {
     "RM": "Mountainous Regions",
 }
 
-# Portuguese problem-type labels as they appear on the website -> English
-PROBLEM_TYPE_TRANSLATIONS: dict[str, str] = {
-    "Agitação Marítima": "Rough Seas",
-    "Chuva": "Rain",
-    "Frio": "Cold",
-    "Gelo": "Ice",
-    "Granizo": "Hail",
-    "Nevoeiro": "Fog",
-    "Neve": "Snow",
-    "Precipitação": "Precipitation",
-    "Tempestade": "Storm",
-    "Trovoada": "Thunderstorm",
-    "Vento": "Wind",
-    "Calor": "Heat",
+# Region code -> translation key of the region's sensor
+REGION_KEYS: dict[str, str] = {
+    "CN": "north_coast",
+    "CS": "south_coast",
+    "PS": "porto_santo",
+    "RM": "mountainous_regions",
 }
 
-# Vocabulary for translating free-form Portuguese description text
-_PT_EN: list[tuple[str, str]] = [
-    # Directions
-    (r"\bnoroeste\b", "northwest"),
-    (r"\bnordeste\b", "northeast"),
-    (r"\bsudoeste\b", "southwest"),
-    (r"\bsudeste\b", "southeast"),
-    (r"\bnorte\b", "north"),
-    (r"\bsul\b", "south"),
-    (r"\beste\b", "east"),
-    (r"\boeste\b", "west"),
-    # Units / measurements
-    (r"\bmetros\b", "metres"),
-    (r"\bmetro\b", "metre"),
-    (r"\bmilímetros\b", "millimetres"),
-    (r"\bmilímetro\b", "millimetre"),
-    (r"\bmm\b", "mm"),
-    (r"\bkm/h\b", "km/h"),
-    # Common phrases
-    (r"\bOndas de\b", "Waves from"),
-    (r"\bcom\b", "of"),
-    (r"\baté\b", "up to"),
-    (r"\bRajadas\b", "Gusts"),
-    (r"\brajadas\b", "gusts"),
-    (r"\bnos extremos leste e oeste\b", "on the eastern and western tips"),
-    (r"\bnos pontos mais elevados\b", "at the highest points"),
-    (r"\bPrecipitação\b", "Precipitation"),
-    (r"\bprecipitação\b", "precipitation"),
-    (r"\bintensa\b", "intense"),
-    (r"\bforte\b", "heavy"),
-    (r"\bfraca\b", "light"),
-    (r"\bpor vezes\b", "at times"),
-    (r"\bNeve\b", "Snow"),
-    (r"\bneve\b", "snow"),
-    (r"\bNevoeiro\b", "Fog"),
-    (r"\bnevoeiro\b", "fog"),
-    (r"\bdenso\b", "dense"),
-    (r"\bvisibilidade\b", "visibility"),
-    (r"\breduzida\b", "reduced"),
-    (r"\btrovoada\b", "thunderstorm"),
-    (r"\bTrovoada\b", "Thunderstorm"),
-    (r"\bgranizo\b", "hail"),
-    (r"\bGranizo\b", "Hail"),
-    (r"\bgelo\b", "ice"),
-    (r"\bGelo\b", "Ice"),
-    (r"\bnegra\b", "black"),
-    (r"\bCalor\b", "Heat"),
-    (r"\bcalor\b", "heat"),
-    (r"\bFrio\b", "Cold"),
-    (r"\bfrio\b", "cold"),
-    (r"\btemperatura\b", "temperature"),
-    (r"\btemperaturas\b", "temperatures"),
-    (r"\bmáxima\b", "maximum"),
-    (r"\bmínima\b", "minimum"),
-    (r"\bacima de\b", "above"),
-    (r"\babaixo de\b", "below"),
-    (r"\bvento\b", "wind"),
-    (r"\bVento\b", "Wind"),
-    (r"\bsoprar\b", "blowing"),
-    (r"\bsopros\b", "gusts"),
-    (r"\bfortes\b", "strong"),
-    (r"\bmoderados\b", "moderate"),
-    (r"\bfraco\b", "light"),
-    (r"\bpersistente\b", "persistent"),
-    (r"\bpossível\b", "possible"),
-    (r"\bpossíveis\b", "possible"),
-    (r"\bexpectável\b", "expected"),
-    (r"\bprevista\b", "forecast"),
-    (r"\bdurante\b", "during"),
-    (r"\ba tarde\b", "the afternoon"),
-    (r"\ba manhã\b", "the morning"),
-    (r"\ba noite\b", "the night"),
-    (r"\bao longo do dia\b", "throughout the day"),
-    (r"\bna costa\b", "on the coast"),
-    (r"\bno interior\b", "inland"),
-    (r"\bno litoral\b", "on the coast"),
-    (r"\bnas zonas altas\b", "in the high areas"),
-    (r"\bnas zonas baixas\b", "in the low areas"),
-    (r"\bisoladas\b", "isolated"),
-    (r"\bisolado\b", "isolated"),
-    (r"\bocasional\b", "occasional"),
-    (r"\bocasionais\b", "occasional"),
-]
+# IPMA warning area -> region code (kept so unique IDs stay stable)
+IPMA_AREAS: dict[str, str] = {
+    "MCN": "CN",
+    "MCS": "CS",
+    "MRM": "RM",
+    "MPS": "PS",
+}
 
-COLOR_TO_ALERT_TYPE = {
-    "#00b050": "green",
-    "#ffd712": "yellow",
-    "#ffff00": "yellow",
-    "#ffa500": "orange",
-    "#ff8c00": "orange",
-    "#ed7d31": "orange",
-    "#ff0000": "red",
-    "#cc0000": "red",
-    "#c00000": "red",
+# IPMA hazard names -> English
+PROBLEM_TYPE_TRANSLATIONS: dict[str, str] = {
+    "Agitação Marítima": "Rough Seas",
+    "Nevoeiro": "Fog",
+    "Tempo Quente": "Heat",
+    "Tempo Frio": "Cold",
+    "Precipitação": "Precipitation",
+    "Neve": "Snow",
+    "Trovoada": "Thunderstorm",
+    "Vento": "Wind",
 }
 
 # Severity ordering — higher number is more severe
@@ -163,149 +71,192 @@ ALERT_TYPE_COLOR: dict[str, str] = {
 }
 
 
-def _translate_problem_type(pt: str | None) -> str | None:
-    """Return the English label for a Portuguese problem-type string."""
-    if pt is None:
-        return None
-    return PROBLEM_TYPE_TRANSLATIONS.get(pt, pt)
+class IpmaError(Exception):
+    """The IPMA warnings feed could not be used."""
 
 
-def _translate_description(pt: str | None) -> str | None:
-    """Best-effort word/phrase substitution of a Portuguese description into English."""
-    if not pt:
-        return pt
-    text = pt
-    for pattern, replacement in _PT_EN:
-        text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
-    return text
+class IpmaConnectionError(IpmaError):
+    """The IPMA warnings feed could not be reached."""
 
 
-def _classify_by_hue(hex_color: str) -> str:
-    """Map an unrecognised hex color to an alert level via HSV hue.
+class IpmaDataError(IpmaError):
+    """The IPMA warnings feed does not have the expected shape."""
 
-    Used as a fallback when the website introduces a shade not in
-    COLOR_TO_ALERT_TYPE, so arbitrary orange variants still map to orange
-    rather than silently collapsing to a severity of 0.
-    """
+
+@dataclass(frozen=True)
+class IpmaWarnings:
+    """The Madeira warnings of one IPMA feed."""
+
+    # Region code -> non-green warnings; empty for regions in `invalid`.
+    alerts: dict[str, list[dict[str, Any]]]
+    # Region code -> why IPMA's data for that region can't be used.
+    invalid: dict[str, str]
+
+
+def _parse_time(raw: object) -> datetime:
+    """Parse an IPMA timestamp; timestamps without an offset are UTC."""
+    if not isinstance(raw, str):
+        raise IpmaDataError(f"invalid time {raw!r}")
     try:
-        h = hex_color.lstrip("#")
-        if len(h) == 3:
-            h = "".join(c * 2 for c in h)
-        r, g, b = (int(h[i : i + 2], 16) / 255.0 for i in (0, 2, 4))
-        hue, sat, _val = colorsys.rgb_to_hsv(r, g, b)
-        if sat < 0.25:  # achromatic / nearly grey → not a warning
-            return "green"
-        hue_deg = hue * 360
-        if hue_deg < 20 or hue_deg >= 340:
-            return "red"
-        if hue_deg < 45:
-            return "orange"
-        if hue_deg < 75:
-            return "yellow"
-        return "green"
-    except Exception:  # noqa: BLE001
-        _LOGGER.debug("Failed to classify color %s by hue", hex_color, exc_info=True)
-        return "green"
+        parsed = datetime.fromisoformat(raw)
+    except ValueError as err:
+        raise IpmaDataError(f"invalid time {raw!r}") from err
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
 
 
-def _color_to_alert_type(style: str) -> str | None:
-    match = re.search(r"background-color\s*:\s*(#[0-9a-fA-F]{3,6})", style)
-    if not match:
+def _parse_row(region_code: str, row: dict[str, Any]) -> dict[str, Any] | None:
+    """
+    Return the warning of one Madeira feed row.
+
+    Returns None for green rows and warnings that are never in effect, and
+    raises IpmaDataError when the row can't be read.
+    """
+    alert_type = row.get("awarenessLevelID")
+    if not isinstance(alert_type, str) or alert_type not in ALERT_SEVERITY:
+        raise IpmaDataError(f"unknown warning level {alert_type!r}")
+    if alert_type == "green":
         return None
-    hex_color = match.group(1).lower()
-    return COLOR_TO_ALERT_TYPE.get(hex_color) or _classify_by_hue(hex_color)
+
+    problem_type = row.get("awarenessTypeName")
+    if not isinstance(problem_type, str | None):
+        raise IpmaDataError(f"invalid hazard {problem_type!r}")
+    text = row.get("text")
+    if not isinstance(text, str | None):
+        raise IpmaDataError(f"invalid description {text!r}")
+    start = _parse_time(row.get("startTime"))
+    end = _parse_time(row.get("endTime"))
+    if end < start:
+        raise IpmaDataError(
+            f"ends at {end.isoformat()}, before its start at {start.isoformat()}"
+        )
+    if end == start:
+        return None
+
+    return {
+        "region_code": region_code,
+        "region": REGIONS[region_code],
+        "alert_type": alert_type,
+        "color": ALERT_TYPE_COLOR[alert_type],
+        "problem_type": PROBLEM_TYPE_TRANSLATIONS.get(problem_type, problem_type),
+        "description": text or None,
+        "start_date": start.isoformat(),
+        "end_date": end.isoformat(),
+    }
 
 
-def _parse_datetime(raw: str) -> datetime | None:
-    raw = raw.strip()
-    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M"):
+def parse_warnings(payload: object) -> IpmaWarnings:
+    """
+    Return the non-green warnings per region code (CN, CS, PS, RM).
+
+    A region with a row that can't be read gets no warnings and is listed in
+    `invalid` instead, so a broken warning never looks like all clear. IPMA
+    publishes a green row for every area and hazard, so an area missing from
+    the feed is invalid too. Raises IpmaDataError when no region can be used.
+    Each region's alerts are sorted by start, end, then severity (worst first).
+    """
+    if not isinstance(payload, list):
+        msg = f"Expected a list of warnings, got {type(payload).__name__}"
+        raise IpmaDataError(msg)
+
+    alerts: dict[str, list[dict[str, Any]]] = {code: [] for code in REGIONS}
+    invalid: dict[str, str] = {}
+    seen: set[str] = set()
+    for row in payload:
+        if not isinstance(row, dict):
+            continue
+        area = row.get("idAreaAviso")
+        if not isinstance(area, str) or area not in IPMA_AREAS:
+            continue
+        region_code = IPMA_AREAS[area]
+        seen.add(region_code)
+        if region_code in invalid:
+            continue
         try:
-            return datetime.strptime(raw, fmt).replace(tzinfo=MADEIRA_TZ)
-        except ValueError:
+            alert = _parse_row(region_code, row)
+        except IpmaDataError as err:
+            invalid[region_code] = f"{area}: {err}"
+            alerts[region_code] = []
             continue
-    return None
+        if alert is not None:
+            alerts[region_code].append(alert)
+
+    for area, region_code in IPMA_AREAS.items():
+        if region_code not in seen:
+            invalid[region_code] = f"{area}: no rows in the IPMA feed"
+    if invalid.keys() == REGIONS.keys():
+        raise IpmaDataError("; ".join(invalid[code] for code in REGIONS))
+
+    for region_alerts in alerts.values():
+        region_alerts.sort(
+            key=lambda a: (
+                a["start_date"],
+                a["end_date"],
+                -ALERT_SEVERITY[a["alert_type"]],
+                a["problem_type"] or "",
+            )
+        )
+    return IpmaWarnings(alerts=alerts, invalid=invalid)
 
 
-def _parse_date_range(text: str) -> tuple[datetime | None, datetime | None]:
-    pattern = (
-        r"Em vigor de\s*,?\s*"
-        r"(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(?::\d{2})?)"
-        r"\s+até\s+"
-        r"(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(?::\d{2})?)"
+async def fetch_alerts(session: aiohttp.ClientSession) -> IpmaWarnings:
+    """
+    Fetch the IPMA warnings feed and return parse_warnings() of it.
+
+    Raises IpmaConnectionError when the feed can't be reached and IpmaDataError
+    when it doesn't contain usable warnings.
+    """
+    timeout = aiohttp.ClientTimeout(total=FETCH_TIMEOUT)
+    try:
+        async with session.get(URL, timeout=timeout) as response:
+            response.raise_for_status()
+            payload = await response.json(content_type=None)
+    # aiohttp's timeout errors are also ClientErrors, so this comes first.
+    except TimeoutError as err:
+        msg = f"Timed out after {FETCH_TIMEOUT} seconds"
+        raise IpmaConnectionError(msg) from err
+    except aiohttp.ClientResponseError as err:
+        msg = f"HTTP {err.status} {err.message}".rstrip()
+        raise IpmaConnectionError(msg) from err
+    except aiohttp.ClientError as err:
+        raise IpmaConnectionError(str(err) or type(err).__name__) from err
+    except ValueError as err:
+        raise IpmaDataError(f"Not valid JSON: {err}") from err
+    return parse_warnings(payload)
+
+
+def split_alerts(
+    alerts: list[dict[str, Any]], now: datetime
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Split alerts into (in effect at *now*, not started yet); drop expired ones."""
+    active: list[dict[str, Any]] = []
+    upcoming: list[dict[str, Any]] = []
+    for alert in alerts:
+        if now < datetime.fromisoformat(alert["start_date"]):
+            upcoming.append(alert)
+        elif now < datetime.fromisoformat(alert["end_date"]):
+            active.append(alert)
+    return active, upcoming
+
+
+def highest_alert_type(alerts: Iterable[dict[str, Any]]) -> str:
+    """Return the most severe alert level, or green when there are no alerts."""
+    return max(
+        (alert["alert_type"] for alert in alerts),
+        key=ALERT_SEVERITY.__getitem__,
+        default="green",
     )
-    match = re.search(pattern, text, re.IGNORECASE)
-    if match:
-        return _parse_datetime(match.group(1)), _parse_datetime(match.group(2))
-    return None, None
 
 
-async def fetch_alerts(
-    session: aiohttp.ClientSession, url: str = URL
-) -> dict[str, list[dict]]:
-    """
-    Return all alerts per region keyed by region code (CN, CS, PS, RM).
-
-    Each value is a list of alert dicts sorted by start_date descending
-    (newest first).  Each dict contains:
-      - region_code, region: identifiers
-      - alert_type: "green", "yellow", "orange", or "red"
-      - color: canonical colour for that level
-      - problem_type, description, start_date, end_date
-    """
-    result: dict[str, list[dict]] = {code: [] for code in REGIONS}
-
-    timeout = aiohttp.ClientTimeout(total=30)
-    async with session.get(url, headers=HEADERS, timeout=timeout) as response:
-        response.raise_for_status()
-        text = await response.text()
-
-    soup = BeautifulSoup(text, "html.parser")
-    alerts_wrapper = soup.find(class_="alerts-wrapper")
-    if not alerts_wrapper:
-        return result
-
-    for anchor in alerts_wrapper.find_all("a", class_="popover-block"):
-        # Region code is encoded in the anchor's CSS classes as e.g. "alert-CN"
-        region_code = next(
-            (
-                cls[6:]
-                for cls in anchor.get("class", [])
-                if cls.startswith("alert-") and cls[6:] in REGIONS
-            ),
-            None,
-        )
-        if region_code is None:
-            continue
-
-        container = anchor.find(class_="alert-container")
-        style = container.get("style", "") if container else ""
-        alert_type = _color_to_alert_type(style) or "green"
-
-        warning_tag = anchor.find(class_="warning-title")
-        problem_type = warning_tag.get_text(strip=True) if warning_tag else None
-
-        small_tag = anchor.find("small")
-        date_text = small_tag.get_text(strip=True) if small_tag else ""
-        start_date, end_date = _parse_date_range(date_text)
-
-        result[region_code].append(
-            {
-                "region_code": region_code,
-                "region": REGIONS[region_code],
-                "alert_type": alert_type,
-                "color": ALERT_TYPE_COLOR.get(alert_type, ALERT_TYPE_COLOR["green"]),
-                "problem_type": _translate_problem_type(problem_type),
-                "description": _translate_description(
-                    anchor.get("data-content") or None
-                ),
-                "start_date": start_date.isoformat() if start_date else None,
-                "end_date": end_date.isoformat() if end_date else None,
-            }
-        )
-
-    # Sort each region's alerts by start_date descending (newest first).
-    # Alerts without a start_date sort to the end.
-    for alerts in result.values():
-        alerts.sort(key=lambda a: a["start_date"] or "", reverse=True)
-
-    return result
+def next_transition(
+    alerts: Mapping[str, list[dict[str, Any]]], now: datetime
+) -> datetime | None:
+    """Return the first alert start or end after *now*, when a state can change."""
+    times = (
+        datetime.fromisoformat(alert[key])
+        for region_alerts in alerts.values()
+        for alert in region_alerts
+        for key in ("start_date", "end_date")
+    )
+    return min((time for time in times if time > now), default=None)

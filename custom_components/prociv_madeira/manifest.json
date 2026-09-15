@@ -1,12 +1,15 @@
 {
   "domain": "prociv_madeira",
   "name": "ProCiv Madeira",
-  "codeowners": [],
+  "after_dependencies": ["lovelace"],
+  "codeowners": ["@utek"],
   "config_flow": true,
   "dependencies": ["frontend", "http"],
   "documentation": "https://github.com/utek/prociv_madeira",
+  "integration_type": "service",
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/utek/prociv_madeira/issues",
-  "requirements": ["beautifulsoup4==4.14.3"],
-  "version": "0.1.0"
+  "requirements": [],
+  "single_config_entry": true,
+  "version": "0.2.0"
 }

@@ -4,50 +4,103 @@
       "user": {
         "description": "Add ProCiv Madeira alerts to Home Assistant.",
         "data": {
-          "scan_interval": "Scan interval (minutes)",
-          "url": "Data source URL"
+          "scan_interval": "Scan interval (minutes)"
         },
         "data_description": {
-          "scan_interval": "How often to fetch alerts from procivmadeira.pt (5–1440 minutes).",
-          "url": "URL to fetch alert data from. Leave as default unless you are using a local mirror or alternative source."
+          "scan_interval": "How often to fetch weather warnings from IPMA (5–1440 minutes)."
         }
       }
     },
     "error": {
-      "invalid_url": "URL must start with http:// or https://"
-    },
-    "abort": {
-      "already_configured": "ProCiv Madeira is already configured."
+      "cannot_connect": "Could not reach the IPMA warnings feed ({error}). Check the internet connection, or try again later if IPMA is having problems.",
+      "invalid_data": "The IPMA warnings feed returned unexpected data ({error}). Try again later.",
+      "unknown": "Unexpected error. Check the Home Assistant logs for details."
     }
   },
   "options": {
-    "error": {
-      "invalid_url": "URL must start with http:// or https://"
-    },
     "step": {
       "init": {
         "title": "ProCiv Madeira Options",
         "data": {
-          "scan_interval": "Scan interval (minutes)",
-          "url": "Data source URL"
+          "scan_interval": "Scan interval (minutes)"
         },
         "data_description": {
-          "scan_interval": "How often to fetch alerts from procivmadeira.pt (5–1440 minutes).",
-          "url": "URL to fetch alert data from. Leave as default unless you are using a local mirror or alternative source."
+          "scan_interval": "How often to fetch weather warnings from IPMA (5–1440 minutes)."
         }
       }
     }
   },
   "entity": {
+    "binary_sensor": {
+      "any_active_alert": {
+        "name": "Any active alert"
+      }
+    },
+    "button": {
+      "refresh": {
+        "name": "Refresh data"
+      }
+    },
     "sensor": {
-      "alert": {
+      "north_coast": {
+        "name": "North Coast",
         "state": {
           "green": "Normal",
           "yellow": "Moderate",
           "orange": "High",
           "red": "Extreme"
         }
+      },
+      "south_coast": {
+        "name": "South Coast",
+        "state": {
+          "green": "Normal",
+          "yellow": "Moderate",
+          "orange": "High",
+          "red": "Extreme"
+        }
+      },
+      "porto_santo": {
+        "name": "Porto Santo",
+        "state": {
+          "green": "Normal",
+          "yellow": "Moderate",
+          "orange": "High",
+          "red": "Extreme"
+        }
+      },
+      "mountainous_regions": {
+        "name": "Mountainous Regions",
+        "state": {
+          "green": "Normal",
+          "yellow": "Moderate",
+          "orange": "High",
+          "red": "Extreme"
+        }
+      },
+      "worst_alert": {
+        "name": "Worst alert",
+        "state": {
+          "green": "Normal",
+          "yellow": "Moderate",
+          "orange": "High",
+          "red": "Extreme"
+        }
+      },
+      "last_fetch": {
+        "name": "Last fetch"
       }
+    }
+  },
+  "exceptions": {
+    "cannot_connect": {
+      "message": "Could not reach the IPMA warnings feed: {error}"
+    },
+    "invalid_data": {
+      "message": "The IPMA warnings feed returned unexpected data: {error}"
+    },
+    "refresh_failed": {
+      "message": "Could not refresh the IPMA warnings: {error}"
     }
   }
 }

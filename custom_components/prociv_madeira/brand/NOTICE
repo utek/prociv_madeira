@@ -1,0 +1,11 @@
+ProCiv Madeira Home Assistant integration
+
+Weather warning data is provided by IPMA (Instituto Português do Mar e da
+Atmosfera), https://www.ipma.pt.
+
+The icons in this folder (icon.png, icon@2x.png) are rendered by
+scripts/render_brand.py of https://github.com/utek/prociv_madeira from the
+"weather-cloudy-alert" icon of Material Design Icons by Pictogrammers
+(https://pictogrammers.com/library/mdi/), licensed under the Apache License,
+Version 2.0. A copy of the licence is in LICENSE-2.0.txt.
+The icon colour and cropping were changed.

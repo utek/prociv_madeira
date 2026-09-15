@@ -1,0 +1,106 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "description": "Adicionar os avisos da ProCiv Madeira ao Home Assistant.",
+        "data": {
+          "scan_interval": "Intervalo de atualização (minutos)"
+        },
+        "data_description": {
+          "scan_interval": "Com que frequência obter os avisos meteorológicos do IPMA (5–1440 minutos)."
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Não foi possível contactar o serviço de avisos do IPMA ({error}). Verifique a ligação à internet ou tente novamente mais tarde se o IPMA estiver com problemas.",
+      "invalid_data": "O serviço de avisos do IPMA devolveu dados inesperados ({error}). Tente novamente mais tarde.",
+      "unknown": "Erro inesperado. Consulte os registos do Home Assistant para mais detalhes."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Opções da ProCiv Madeira",
+        "data": {
+          "scan_interval": "Intervalo de atualização (minutos)"
+        },
+        "data_description": {
+          "scan_interval": "Com que frequência obter os avisos meteorológicos do IPMA (5–1440 minutos)."
+        }
+      }
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "any_active_alert": {
+        "name": "Algum aviso ativo"
+      }
+    },
+    "button": {
+      "refresh": {
+        "name": "Atualizar dados"
+      }
+    },
+    "sensor": {
+      "north_coast": {
+        "name": "Costa Norte",
+        "state": {
+          "green": "Normal",
+          "yellow": "Moderado",
+          "orange": "Elevado",
+          "red": "Extremo"
+        }
+      },
+      "south_coast": {
+        "name": "Costa Sul",
+        "state": {
+          "green": "Normal",
+          "yellow": "Moderado",
+          "orange": "Elevado",
+          "red": "Extremo"
+        }
+      },
+      "porto_santo": {
+        "name": "Porto Santo",
+        "state": {
+          "green": "Normal",
+          "yellow": "Moderado",
+          "orange": "Elevado",
+          "red": "Extremo"
+        }
+      },
+      "mountainous_regions": {
+        "name": "Regiões Montanhosas",
+        "state": {
+          "green": "Normal",
+          "yellow": "Moderado",
+          "orange": "Elevado",
+          "red": "Extremo"
+        }
+      },
+      "worst_alert": {
+        "name": "Pior aviso",
+        "state": {
+          "green": "Normal",
+          "yellow": "Moderado",
+          "orange": "Elevado",
+          "red": "Extremo"
+        }
+      },
+      "last_fetch": {
+        "name": "Última atualização"
+      }
+    }
+  },
+  "exceptions": {
+    "cannot_connect": {
+      "message": "Não foi possível contactar o serviço de avisos do IPMA: {error}"
+    },
+    "invalid_data": {
+      "message": "O serviço de avisos do IPMA devolveu dados inesperados: {error}"
+    },
+    "refresh_failed": {
+      "message": "Não foi possível atualizar os avisos do IPMA: {error}"
+    }
+  }
+}

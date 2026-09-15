@@ -1,0 +1,62 @@
+{
+  "entity": {
+    "binary_sensor": {
+      "any_active_alert": {
+        "default": "mdi:check-circle",
+        "state": {
+          "on": "mdi:alert"
+        }
+      }
+    },
+    "button": {
+      "refresh": {
+        "default": "mdi:refresh"
+      }
+    },
+    "sensor": {
+      "north_coast": {
+        "default": "mdi:check-circle",
+        "state": {
+          "yellow": "mdi:alert-circle",
+          "orange": "mdi:alert",
+          "red": "mdi:alert-octagon"
+        }
+      },
+      "south_coast": {
+        "default": "mdi:check-circle",
+        "state": {
+          "yellow": "mdi:alert-circle",
+          "orange": "mdi:alert",
+          "red": "mdi:alert-octagon"
+        }
+      },
+      "porto_santo": {
+        "default": "mdi:check-circle",
+        "state": {
+          "yellow": "mdi:alert-circle",
+          "orange": "mdi:alert",
+          "red": "mdi:alert-octagon"
+        }
+      },
+      "mountainous_regions": {
+        "default": "mdi:check-circle",
+        "state": {
+          "yellow": "mdi:alert-circle",
+          "orange": "mdi:alert",
+          "red": "mdi:alert-octagon"
+        }
+      },
+      "worst_alert": {
+        "default": "mdi:check-circle",
+        "state": {
+          "yellow": "mdi:alert-circle",
+          "orange": "mdi:alert",
+          "red": "mdi:alert-octagon"
+        }
+      },
+      "last_fetch": {
+        "default": "mdi:clock-check-outline"
+      }
+    }
+  }
+}

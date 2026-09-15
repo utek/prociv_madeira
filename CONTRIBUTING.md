@@ -44,9 +44,13 @@ People _love_ thorough bug reports. I'm not even kidding.
 
 ## Use a Consistent Coding Style
 
-Use [black](https://github.com/ambv/black) to make sure the code follows the style.
+Use [Ruff](https://docs.astral.sh/ruff/) to format and lint the code: run `scripts/lint`, or install the [pre-commit](https://pre-commit.com/) hooks with `pre-commit install`.
 
 ## Test your code modification
+
+The project targets Python 3.14 and Home Assistant 2026.9. Install the development requirements with `scripts/setup` and run the test suite with `pytest`. The tests run against a real Home Assistant instance using [pytest-homeassistant-custom-component](https://github.com/MatthewFlamm/pytest-homeassistant-custom-component).
+
+The Lovelace card has its own tests, which need Node.js 24 (included in the development container): run `node --test "tests/card/*.test.mjs"`.
 
 This custom component is based on [integration_blueprint template](https://github.com/ludeeus/integration_blueprint).
 

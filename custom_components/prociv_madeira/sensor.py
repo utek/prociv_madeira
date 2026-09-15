@@ -9,10 +9,14 @@ from typing import Any
 from homeassistant.components.sensor import SensorDeviceClass
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.helpers.entity import EntityCategory
+from homeassistant.util import dt as dt_util
 
 from .alerts import ALERT_SEVERITY
 from .alerts import ALERT_TYPE_COLOR
+from .alerts import REGION_KEYS
 from .alerts import REGIONS
+from .alerts import highest_alert_type
+from .alerts import split_alerts
 from .entity import ProcivMadeiraEntity
 
 if TYPE_CHECKING:
@@ -21,6 +25,9 @@ if TYPE_CHECKING:
 
     from .coordinator import ProcivMadeiraDataUpdateCoordinator
     from .data import ProcivMadeiraConfigEntry
+
+# Read-only platform backed by the coordinator.
+PARALLEL_UPDATES = 0
 
 
 async def async_setup_entry(
@@ -42,21 +49,13 @@ async def async_setup_entry(
     )
 
 
-# Icon per alert level – green gets a check icon, not an alert icon.
-_ALERT_ICONS: dict[str, str] = {
-    "green": "mdi:check-circle",
-    "yellow": "mdi:alert-circle",
-    "orange": "mdi:alert",
-    "red": "mdi:alert-octagon",
-}
-
-
 class ProcivMadeiraSensor(ProcivMadeiraEntity, SensorEntity):
     """ProCiv Madeira alert sensor for a single region."""
 
     _attr_device_class = SensorDeviceClass.ENUM
     _attr_options = ["green", "yellow", "orange", "red"]
-    _attr_translation_key = "alert"
+    # The alert lists change with every bulletin; keep them out of history.
+    _unrecorded_attributes = frozenset({"alerts", "upcoming_alerts"})
 
     def __init__(
         self,
@@ -66,42 +65,36 @@ class ProcivMadeiraSensor(ProcivMadeiraEntity, SensorEntity):
         """Initialize the sensor."""
         super().__init__(coordinator)
         self._region_code = region_code
+        self._attr_translation_key = REGION_KEYS[region_code]
         self._attr_unique_id = f"{coordinator.config_entry.entry_id}_{region_code}"
-        self._attr_name = REGIONS[region_code]
+
+    @property
+    def available(self) -> bool:
+        """Return False while IPMA's data for this region can't be used."""
+        return (
+            super().available and self._region_code not in self.coordinator.data.invalid
+        )
+
+    def _split_alerts(self) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        """Return this region's (in effect now, not started yet) alerts."""
+        return split_alerts(
+            self.coordinator.data.alerts[self._region_code], dt_util.utcnow()
+        )
 
     @property
     def native_value(self) -> str:
-        """Return the alert type as the sensor state (green when no active alert)."""
-        data = self.coordinator.data or {}
-        alerts = data.get(self._region_code, [])
-        return alerts[0].get("alert_type", "green") if alerts else "green"
-
-    @property
-    def icon(self) -> str:
-        """Return an icon that reflects the current alert level."""
-        return _ALERT_ICONS.get(self.native_value, "mdi:alert")
-
-    @property
-    def entity_color(self) -> str | None:
-        """
-        Return an HA UI color string matching the alert level.
-
-        Supported on HA 2024.1+; silently unused on older versions.
-        """
-        return {
-            "green": "green",
-            "yellow": "yellow",
-            "orange": "orange",
-            "red": "red",
-        }.get(self.native_value)
+        """Return the most severe alert in effect (green when there is none)."""
+        active, _upcoming = self._split_alerts()
+        return highest_alert_type(active)
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return additional alert attributes."""
-        data = self.coordinator.data or {}
-        alerts = data.get(self._region_code, [])
-        current = alerts[0] if alerts else {}
-        state = self.native_value
+        active, upcoming = self._split_alerts()
+        current = max(
+            active, key=lambda alert: ALERT_SEVERITY[alert["alert_type"]], default={}
+        )
+        state = current.get("alert_type", "green")
         return {
             "region_code": self._region_code,
             "region": REGIONS[self._region_code],
@@ -111,7 +104,8 @@ class ProcivMadeiraSensor(ProcivMadeiraEntity, SensorEntity):
             "description": current.get("description"),
             "start_date": current.get("start_date"),
             "end_date": current.get("end_date"),
-            "alerts": alerts,
+            "alerts": active,
+            "upcoming_alerts": upcoming,
         }
 
 
@@ -120,8 +114,7 @@ class ProcivMadeiraWorstAlertSensor(ProcivMadeiraEntity, SensorEntity):
 
     _attr_device_class = SensorDeviceClass.ENUM
     _attr_options = ["green", "yellow", "orange", "red"]
-    _attr_name = "Worst Alert"
-    _attr_translation_key = "alert"
+    _attr_translation_key = "worst_alert"
 
     def __init__(self, coordinator: ProcivMadeiraDataUpdateCoordinator) -> None:
         """Initialize the sensor."""
@@ -129,47 +122,29 @@ class ProcivMadeiraWorstAlertSensor(ProcivMadeiraEntity, SensorEntity):
         self._attr_unique_id = f"{coordinator.config_entry.entry_id}_worst_alert"
 
     @property
-    def native_value(self) -> str:
-        """Return the most severe alert type across all regions."""
-        data = self.coordinator.data or {}
-        return max(
-            (
-                alert.get("alert_type", "green")
-                for alerts in data.values()
-                for alert in alerts
-            ),
-            key=lambda t: ALERT_SEVERITY.get(t, 0),
-            default="green",
+    def available(self) -> bool:
+        """Return False when a region without usable data could be worse."""
+        return super().available and (
+            not self.coordinator.data.invalid or self.native_value == "red"
         )
 
     @property
-    def icon(self) -> str:
-        """Return an icon reflecting the worst alert level."""
-        return _ALERT_ICONS.get(self.native_value, "mdi:alert")
-
-    @property
-    def entity_color(self) -> str | None:
-        """Return an HA UI color string matching the worst alert level."""
-        return {
-            "green": "green",
-            "yellow": "yellow",
-            "orange": "orange",
-            "red": "red",
-        }.get(self.native_value)
+    def native_value(self) -> str:
+        """Return the most severe alert in effect across all regions."""
+        now = dt_util.utcnow()
+        return highest_alert_type(
+            alert
+            for alerts in self.coordinator.data.alerts.values()
+            for alert in split_alerts(alerts, now)[0]
+        )
 
 
 class ProcivMadeiraLastFetchSensor(ProcivMadeiraEntity, SensorEntity):
-    """
-    Sensor that records the timestamp of each successful data fetch.
-
-    Each state change appears in the Logbook, which is surfaced as the
-    integration's Activity panel in Settings → Devices & Services.
-    """
+    """Sensor with the time of the last successful fetch from IPMA."""
 
     _attr_device_class = SensorDeviceClass.TIMESTAMP
     _attr_entity_category = EntityCategory.DIAGNOSTIC
-    _attr_name = "Last Fetch"
-    _attr_icon = "mdi:clock-check-outline"
+    _attr_translation_key = "last_fetch"
 
     def __init__(self, coordinator: ProcivMadeiraDataUpdateCoordinator) -> None:
         """Initialize the sensor."""
@@ -177,6 +152,11 @@ class ProcivMadeiraLastFetchSensor(ProcivMadeiraEntity, SensorEntity):
         self._attr_unique_id = f"{coordinator.config_entry.entry_id}_last_fetch"
 
     @property
+    def available(self) -> bool:
+        """Stay available while IPMA can't be reached, to show the last success."""
+        return self.coordinator.last_update_success_time is not None
+
+    @property
     def native_value(self) -> datetime | None:
         """Return the UTC time of the last successful fetch."""
-        return self.coordinator.last_fetch
+        return self.coordinator.last_update_success_time

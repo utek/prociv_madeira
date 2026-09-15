@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from homeassistant.helpers.device_registry import DeviceEntryType
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -19,11 +20,14 @@ class ProcivMadeiraEntity(CoordinatorEntity[ProcivMadeiraDataUpdateCoordinator])
         """Initialize."""
         super().__init__(coordinator)
         self._attr_device_info = DeviceInfo(
+            entry_type=DeviceEntryType.SERVICE,
             identifiers={
                 (
                     coordinator.config_entry.domain,
                     coordinator.config_entry.entry_id,
                 ),
             },
+            manufacturer="IPMA",
             name="ProCiv Madeira Weather Alerts",
+            configuration_url="https://www.ipma.pt",
         )

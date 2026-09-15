@@ -3,18 +3,38 @@
  * Lovelace custom card for displaying Prociv Madeira weather alerts.
  * Inspired by lovelace-mushroom (https://github.com/piitaya/lovelace-mushroom)
  *
- * Installation: Copy this file to <config>/www/ and add as a Lovelace resource.
- * Usage: Add card type "prociv-madeira-weather-card" in your dashboard.
+ * Installation: loaded automatically by the ProCiv Madeira integration.
+ * Usage: add a card with type "custom:prociv-madeira-weather-card"; with no
+ * options it finds the integration's region sensors by itself.
  *
- * @version 1.6.0
+ * @version 1.8.0
  * @license MIT
  */
 (function () {
   'use strict';
 
-  const CARD_VERSION = '1.6.0';
+  const CARD_VERSION = '1.8.0';
   const CARD_NAME = 'prociv-madeira-weather-card';
   const EDITOR_NAME = 'prociv-madeira-weather-card-editor';
+  const INTEGRATION_DOMAIN = 'prociv_madeira';
+  // Translation keys of the integration's region sensors, in display order.
+  const REGION_TRANSLATION_KEYS = [
+    'north_coast',
+    'south_coast',
+    'porto_santo',
+    'mountainous_regions',
+  ];
+  const LAST_FETCH_TRANSLATION_KEY = 'last_fetch';
+  // English region names by translation key, for region sensors that have no
+  // attributes because they are unavailable.
+  const REGION_NAMES = {
+    north_coast: 'North Coast',
+    south_coast: 'South Coast',
+    porto_santo: 'Porto Santo',
+    mountainous_regions: 'Mountainous Regions',
+  };
+  // States of a sensor whose data Home Assistant doesn't have.
+  const NO_DATA_STATES = ['unavailable', 'unknown'];
 
   console.info(
     `%c PROCIV-MADEIRA-WEATHER-CARD %c v${CARD_VERSION} `,
@@ -39,7 +59,7 @@
       color: '#C8A000',
       chipBg: 'rgba(200,160,0,0.10)',
       chipBorder: 'rgba(200,160,0,0.28)',
-      icon: 'mdi:alert',
+      icon: 'mdi:alert-circle',
       label: 'Moderate',
       order: 1,
     },
@@ -47,7 +67,7 @@
       color: '#BF360C',
       chipBg: 'rgba(191,54,12,0.10)',
       chipBorder: 'rgba(191,54,12,0.28)',
-      icon: 'mdi:alert-circle',
+      icon: 'mdi:alert',
       label: 'High',
       order: 2,
     },
@@ -61,8 +81,17 @@
     },
   };
 
+  // Look of a region whose sensor has no data (unavailable or unknown).
+  const NO_DATA = {
+    color: 'var(--secondary-text-color)',
+    chipBg: 'rgba(127,127,127,0.12)',
+    chipBorder: 'rgba(127,127,127,0.30)',
+    icon: 'mdi:cloud-off-outline',
+    label: 'No data',
+  };
+
   // ---------------------------------------------------------------------------
-  // Problem type → MDI icon  (matches sensor.py PROBLEM_TYPE_TRANSLATIONS keys)
+  // Problem type → MDI icon  (values of alerts.py PROBLEM_TYPE_TRANSLATIONS)
   // ---------------------------------------------------------------------------
 
   const PROBLEM_TYPE_ICONS = {
@@ -80,48 +109,42 @@
     Hail: 'mdi:weather-hail',
   };
 
+  // Lookups use Object.hasOwn so that values such as "constructor" don't match
+  // properties that every object has.
   function getProblemIcon(problemType) {
-    return PROBLEM_TYPE_ICONS[problemType] ?? 'mdi:weather-cloudy-alert';
+    return Object.hasOwn(PROBLEM_TYPE_ICONS, problemType)
+      ? PROBLEM_TYPE_ICONS[problemType]
+      : 'mdi:weather-cloudy-alert';
   }
 
   function getAlertLevel(state) {
-    return ALERT_LEVELS[(state ?? '').toUpperCase()] ?? null;
+    const key = String(state ?? '').toLowerCase();
+    return Object.hasOwn(ALERT_LEVELS, key) ? ALERT_LEVELS[key] : null;
   }
 
-  function isActiveAlert(state) {
-    const s = (state ?? '').toUpperCase();
-    return s !== 'green' && s !== 'UNAVAILABLE' && s !== 'UNKNOWN' && s !== '';
+  // A state as Home Assistant shows it in the user's language, or null when
+  // it has no translation.
+  function formatState(hass, stateObj, state) {
+    if (!stateObj || typeof hass?.formatEntityState !== 'function') return null;
+    const label = hass.formatEntityState(stateObj, state);
+    return label && label !== state ? label : null;
   }
 
-  // Check if an alert is currently active (now is between start and end times, or no end time)
-  function isCurrentAlert(alert) {
-    const now = Date.now();
-    const start = alert.start_date
-      ? new Date(alert.start_date).getTime()
-      : null;
-    const end = alert.end_date ? new Date(alert.end_date).getTime() : null;
-
-    // If no start date, assume it's current
-    if (!start) return true;
-    // If now is before start, it's a future alert
-    if (now < start) return false;
-    // If there's an end date and now is after it, it's expired
-    if (end && now > end) return false;
-    // Otherwise it's current
-    return true;
+  // Label for an alert level in the user's language, from the integration's
+  // state translations; falls back to English when they aren't available.
+  function levelLabel(hass, stateObj, level) {
+    return (
+      formatState(hass, stateObj, level) ?? getAlertLevel(level)?.label ?? level
+    );
   }
 
-  // Get the highest severity level from current alerts
-  function getHighestCurrentAlertLevel(alerts) {
-    let highest = null;
-    for (const alert of alerts) {
-      if (!isCurrentAlert(alert)) continue;
-      const level = getAlertLevel(alert.alert_type);
-      if (level && (!highest || level.order > highest.order)) {
-        highest = level;
-      }
-    }
-    return highest;
+  // Whether a region sensor has no data: unavailable, unknown, or without the
+  // integration's attributes (Home Assistant drops them while unavailable).
+  function hasNoData(stateObj) {
+    return (
+      NO_DATA_STATES.includes(stateObj.state) ||
+      stateObj.attributes?.region_code == null
+    );
   }
 
   // ---------------------------------------------------------------------------
@@ -130,8 +153,10 @@
 
   function formatDate(isoStr) {
     if (!isoStr) return null;
+    const date = new Date(isoStr);
+    if (Number.isNaN(date.getTime())) return null;
     try {
-      return new Date(isoStr).toLocaleString(undefined, {
+      return date.toLocaleString(undefined, {
         month: 'short',
         day: 'numeric',
         hour: '2-digit',
@@ -154,7 +179,9 @@
 
   function relativeTime(dateStr) {
     if (!dateStr) return null;
-    const delta = Math.round((Date.now() - new Date(dateStr).getTime()) / 1000);
+    const time = new Date(dateStr).getTime();
+    if (Number.isNaN(time)) return null;
+    const delta = Math.round((Date.now() - time) / 1000);
     if (delta < 60) return 'just now';
     if (delta < 3600) return `${Math.floor(delta / 60)}m ago`;
     if (delta < 86400) return `${Math.floor(delta / 3600)}h ago`;
@@ -167,11 +194,16 @@
     return entities.map((e) => (typeof e === 'string' ? { entity: e } : e));
   }
 
-  // Sanitize strings before interpolating into HTML to prevent XSS.
-  const _escapeEl = document.createElement('div');
+  // Sanitize strings before interpolating into HTML text or attributes.
+  const HTML_ESCAPES = {
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;',
+  };
   function escapeHtml(str) {
-    _escapeEl.textContent = str ?? '';
-    return _escapeEl.innerHTML;
+    return String(str ?? '').replace(/[&<>"']/g, (c) => HTML_ESCAPES[c]);
   }
 
   // ---------------------------------------------------------------------------
@@ -180,7 +212,6 @@
 
   const DEFAULT_CONFIG = {
     title: 'Madeira Weather Alerts',
-    entity_prefix: 'sensor.prociv_madeira_alert_',
     entities: [],
     columns: 2,
     show_all: false,
@@ -193,6 +224,39 @@
     show_problem_type: true,
     show_dates: true,
   };
+
+  // Drops options that still have their default value, so saved card
+  // configurations only contain what the user changed.
+  function compactConfig(config) {
+    return Object.fromEntries(
+      Object.entries(config).filter(
+        ([key, value]) =>
+          !(key in DEFAULT_CONFIG) ||
+          JSON.stringify(value) !== JSON.stringify(DEFAULT_CONFIG[key]),
+      ),
+    );
+  }
+
+  // Entity IDs of the integration's region sensors (in display order) and of
+  // its last-fetch sensor, found through the entity registry.
+  function discoverEntities(hass) {
+    const regions = new Map();
+    let lastFetchId = null;
+    for (const [id, entry] of Object.entries(hass?.entities ?? {})) {
+      if (entry.platform !== INTEGRATION_DOMAIN) continue;
+      if (REGION_TRANSLATION_KEYS.includes(entry.translation_key)) {
+        regions.set(entry.translation_key, id);
+      } else if (entry.translation_key === LAST_FETCH_TRANSLATION_KEY) {
+        lastFetchId = id;
+      }
+    }
+    return {
+      regionIds: REGION_TRANSLATION_KEYS.map((key) => regions.get(key)).filter(
+        Boolean,
+      ),
+      lastFetchId,
+    };
+  }
 
   // ---------------------------------------------------------------------------
   // Card Editor
@@ -286,7 +350,7 @@
     },
     {
       name: 'entity_prefix',
-      label: 'Entity Prefix (e.g. sensor.prociv_madeira_weather_)',
+      label: 'Entity ID prefix filter (optional)',
       selector: { text: {} },
     },
     // ── Layout ────────────────────────────────────────────────────────────────
@@ -444,7 +508,7 @@
       this._entitySection.innerHTML = `
         <div class="section-title">Entities</div>
         <div class="section-hint">
-          When left empty the prefix above is used to auto-discover sensors.<br>
+          When left empty, the card finds the ProCiv Madeira region sensors automatically.<br>
           <strong>Name</strong> overrides the region label from the sensor attribute.
         </div>
       `;
@@ -520,12 +584,9 @@
 
     // ── Helpers ──────────────────────────────────────────────────────────────
 
-    // Returns entity IDs of all region sensors (have region_code attribute).
+    // Returns entity IDs of the integration's region sensors.
     _regionEntityIds() {
-      if (!this._hass) return [];
-      return Object.entries(this._hass.states)
-        .filter(([, s]) => s.attributes?.region_code != null)
-        .map(([id]) => id);
+      return discoverEntities(this._hass).regionIds;
     }
 
     _syncForm() {
@@ -535,7 +596,9 @@
 
     _fire() {
       this.dispatchEvent(
-        new CustomEvent('config-changed', { detail: { config: this._config } }),
+        new CustomEvent('config-changed', {
+          detail: { config: compactConfig(this._config) },
+        }),
       );
     }
   }
@@ -549,9 +612,11 @@
       super();
       this._config = null;
       this._hass = null;
-      this._cardExpanded = false;
+      this._cardExpanded = true;
+      this._discovered = null;
       this._collapsedRegions = new Set();
       this._expandedAlerts = new Set();
+      this._openFutureAlerts = new Set();
       this._tickTimer = null;
       this.attachShadow({ mode: 'open' });
     }
@@ -569,8 +634,12 @@
 
     // ── HA Card API ────────────────────────────────────────────────────────────
 
+    static get version() {
+      return CARD_VERSION;
+    }
+
     static getStubConfig() {
-      return { ...DEFAULT_CONFIG };
+      return {};
     }
 
     static getConfigElement() {
@@ -578,13 +647,6 @@
     }
 
     setConfig(config) {
-      const hasEntities = config.entities && config.entities.length > 0;
-      const hasPrefix = !!config.entity_prefix;
-      if (!hasEntities && !hasPrefix) {
-        throw new Error(
-          'Prociv Madeira Weather Card: provide "entity_prefix" or "entities".',
-        );
-      }
       this._config = { ...DEFAULT_CONFIG, ...config };
       if (this._hass) this._render();
     }
@@ -593,61 +655,93 @@
       const prev = this._hass;
       this._hass = hass;
       if (this._statesChanged(prev, hass)) this._render();
+      else if (this._lastFetchChanged(prev, hass)) this._updateLastFetch();
     }
 
-    // Only re-render when relevant entity states have actually changed.
+    // Only re-render when something the card shows has changed. Home Assistant
+    // replaces formatEntityState when it has loaded translations.
     _statesChanged(prev, next) {
       if (!prev || !this._config) return true;
-      const { entities, entity_prefix } = this._config;
-      const ids =
-        entities && entities.length > 0
-          ? normalizeEntities(entities)
-              .filter((e) => e.entity)
-              .map((e) => e.entity)
-          : Object.keys(next.states).filter((id) =>
-              id.startsWith(entity_prefix),
-            );
-      for (const id of ids) {
-        if (prev.states[id] !== next.states[id]) return true;
+      if (
+        prev.entities !== next.entities ||
+        prev.language !== next.language ||
+        prev.locale !== next.locale ||
+        prev.formatEntityState !== next.formatEntityState
+      ) {
+        return true;
       }
-      // Also check the last_fetch sensor
-      const base = (entity_prefix ?? '').replace(/alert_$/, '');
-      const fetchId = `${base}last_fetch`;
-      if (prev.states[fetchId] !== next.states[fetchId]) return true;
-      return false;
+      return this._regionEntities().some(
+        ({ id }) => prev.states[id] !== next.states[id],
+      );
+    }
+
+    // The last fetch time changes with every poll, but only the "Updated"
+    // line shows it.
+    _lastFetchChanged(prev, next) {
+      const { lastFetchId } = this._discover();
+      return Boolean(
+        this._config.show_last_updated &&
+        lastFetchId &&
+        prev.states[lastFetchId] !== next.states[lastFetchId],
+      );
     }
 
     getCardSize() {
       return 3;
     }
 
+    getGridOptions() {
+      return { columns: 12, rows: 'auto', min_columns: 6 };
+    }
+
     // ── Entity resolution ──────────────────────────────────────────────────────
+
+    // Registry lookup, repeated only when Home Assistant replaces the registry.
+    _discover() {
+      const registry = this._hass?.entities;
+      if (!this._discovered || this._discovered.registry !== registry) {
+        this._discovered = { registry, ...discoverEntities(this._hass) };
+      }
+      return this._discovered;
+    }
+
+    // Region sensors to show: the configured entities, or the discovered ones
+    // (narrowed by entity_prefix when the prefix matches any of them).
+    _regionEntities() {
+      const configured = normalizeEntities(this._config.entities).filter(
+        (item) => item.entity,
+      );
+      if (configured.length > 0) {
+        return configured.map((item) => ({
+          id: item.entity,
+          customName: item.name ?? null,
+        }));
+      }
+      // Sensors hidden in Home Assistant are left out, as on its own dashboards.
+      let ids = this._discover().regionIds.filter(
+        (id) => !this._hass.entities?.[id]?.hidden,
+      );
+      const prefix = this._config.entity_prefix;
+      if (prefix) {
+        const matching = ids.filter((id) => id.startsWith(prefix));
+        if (matching.length > 0) ids = matching;
+      }
+      return ids.map((id) => ({ id, customName: null }));
+    }
 
     _resolveEntities() {
       if (!this._hass) return [];
-      const { entities, entity_prefix } = this._config;
-
-      if (entities && entities.length > 0) {
-        // Explicit list (supports both legacy strings and {entity, name} objects).
-        // Only region sensors (those carrying region_code) are included.
-        return normalizeEntities(entities)
-          .filter((item) => item.entity)
-          .map((item) => ({
-            id: item.entity,
-            stateObj: this._hass.states[item.entity],
-            customName: item.name ?? null,
-          }))
-          .filter((e) => e.stateObj?.attributes?.region_code != null);
-      }
-
-      // Prefix scan — exclude worst_alert, last_fetch, binary sensors, etc.
-      return Object.entries(this._hass.states)
+      return this._regionEntities()
+        .map((entity) => ({
+          ...entity,
+          stateObj: this._hass.states[entity.id],
+        }))
         .filter(
-          ([id, stateObj]) =>
-            id.startsWith(entity_prefix) &&
-            stateObj.attributes?.region_code != null,
-        )
-        .map(([id, stateObj]) => ({ id, stateObj, customName: null }));
+          ({ stateObj }) =>
+            stateObj &&
+            (stateObj.attributes?.region_code != null ||
+              NO_DATA_STATES.includes(stateObj.state)),
+        );
     }
 
     // ── Render ─────────────────────────────────────────────────────────────────
@@ -664,19 +758,25 @@
         if (d.open) this._expandedAlerts.add(d.dataset.alert);
         else this._expandedAlerts.delete(d.dataset.alert);
       });
+      this.shadowRoot.querySelectorAll('details[data-future]').forEach((d) => {
+        if (d.open) this._openFutureAlerts.add(d.dataset.future);
+        else this._openFutureAlerts.delete(d.dataset.future);
+      });
 
       const cfg = this._config;
-      let entities = this._resolveEntities();
+      const regions = this._resolveEntities();
+      const noDataCount = regions.filter((e) => hasNoData(e.stateObj)).length;
+      let entities = regions;
 
-      // Filter out green unless show_all is on
-      // Also filter out regions where all alerts start in the future (no current alerts)
+      // Hide regions without current or upcoming alerts unless show_all is on.
+      // Regions without data are always shown, as they may have warnings.
       if (!cfg.show_all) {
         entities = entities.filter((e) => {
-          const alerts = e.stateObj.attributes?.alerts ?? [];
-          // Keep if there are current alerts OR if there are any alerts (show future too)
-          // If there are no current alerts but there are future alerts, we still show them
-          // The coloring will be handled in _regionSectionHtml
-          return alerts.length > 0;
+          if (hasNoData(e.stateObj)) return true;
+          const attrs = e.stateObj.attributes ?? {};
+          const current = attrs.alerts ?? [];
+          const upcoming = attrs.upcoming_alerts ?? [];
+          return current.length + upcoming.length > 0;
         });
       }
 
@@ -689,16 +789,15 @@
         });
       }
 
-      // Count every individual alert by severity level across all regions.
+      // Count every alert in effect by severity level across all regions.
       const alertsByLevel = { red: 0, orange: 0, yellow: 0 };
       for (const { stateObj } of entities) {
         for (const a of stateObj.attributes?.alerts ?? []) {
-          const t = (a.alert_type ?? '').toUpperCase();
-          if (t in alertsByLevel) alertsByLevel[t]++;
+          const t = String(a.alert_type ?? '').toLowerCase();
+          if (Object.hasOwn(alertsByLevel, t)) alertsByLevel[t]++;
         }
       }
 
-      const hasVisible = entities.length > 0;
       const cols = Math.max(1, Math.min(4, cfg.columns ?? 2));
 
       // Card body is hidden until the user expands it (unless there is no header to click).
@@ -707,12 +806,12 @@
       this.shadowRoot.innerHTML = `
         <style>${this._styles(cols)}</style>
         <ha-card>
-          ${cfg.show_header !== false ? this._headerHtml(cfg, alertsByLevel) : ''}
+          ${cfg.show_header !== false ? this._headerHtml(alertsByLevel, noDataCount, regions.length, cfg) : ''}
           ${
             showContent
               ? `
           <div class="card-content">
-            ${hasVisible ? this._alertsHtml(entities, cfg) : this._noAlertsHtml(cfg)}
+            ${this._contentHtml(entities, regions.length, cfg)}
           </div>`
               : ''
           }
@@ -732,30 +831,42 @@
 
     // ── Header ─────────────────────────────────────────────────────────────────
 
-    _headerHtml(cfg, alertsByLevel) {
+    // Warnings per level, plus the number of regions without data. "All Clear"
+    // needs data for at least one region and for every region shown.
+    _headerHtml(alertsByLevel, noDataCount, regionCount, cfg) {
       const totalActive =
         alertsByLevel.red + alertsByLevel.orange + alertsByLevel.yellow;
-      const hasAlerts = totalActive > 0;
-
-      const statusHtml = hasAlerts
-        ? [
-            { key: 'red', level: ALERT_LEVELS.red },
-            { key: 'orange', level: ALERT_LEVELS.orange },
-            { key: 'yellow', level: ALERT_LEVELS.yellow },
-          ]
-            .filter(({ key }) => alertsByLevel[key] > 0)
-            .map(
-              ({ key, level }) => `
-              <div class="level-chip" style="background:${level.chipBg};border-color:${level.chipBorder};color:${level.color};">
+      const chip = (key, level, count, title) => `
+              <div class="level-chip" data-level="${key}"${title ? ` title="${title}"` : ''} style="background:${level.chipBg};border-color:${level.chipBorder};color:${level.color};">
                 <ha-icon icon="${level.icon}" style="--mdc-icon-size:12px;"></ha-icon>
-                <span>${alertsByLevel[key]}</span>
-              </div>`,
-            )
-            .join('')
-        : `<div class="badge badge--clear">
+                <span>${count}</span>
+              </div>`;
+
+      let statusHtml;
+      if (totalActive > 0) {
+        statusHtml = ['red', 'orange', 'yellow']
+          .filter((key) => alertsByLevel[key] > 0)
+          .map((key) => chip(key, ALERT_LEVELS[key], alertsByLevel[key]))
+          .join('');
+        if (noDataCount > 0) {
+          statusHtml += chip(
+            'no-data',
+            NO_DATA,
+            noDataCount,
+            'Regions without data',
+          );
+        }
+      } else if (noDataCount > 0 || regionCount === 0) {
+        statusHtml = `<div class="badge badge--no-data">
+             <ha-icon icon="${NO_DATA.icon}"></ha-icon>
+             <span>${NO_DATA.label}</span>
+           </div>`;
+      } else {
+        statusHtml = `<div class="badge badge--clear">
              <ha-icon icon="mdi:check-circle"></ha-icon>
              <span>All Clear</span>
            </div>`;
+      }
 
       const chevronCls = this._cardExpanded
         ? 'card-chevron card-chevron--open'
@@ -774,6 +885,14 @@
       `;
     }
 
+    // ── Card content ───────────────────────────────────────────────────────────
+
+    _contentHtml(entities, regionCount, cfg) {
+      if (entities.length > 0) return this._alertsHtml(entities, cfg);
+      if (regionCount === 0) return this._noRegionsHtml();
+      return this._noAlertsHtml(cfg);
+    }
+
     // ── No-alerts state ────────────────────────────────────────────────────────
 
     _noAlertsHtml(cfg) {
@@ -781,6 +900,16 @@
         <div class="no-alerts">
           <ha-icon icon="mdi:check-circle-outline" class="no-alerts-icon"></ha-icon>
           <span class="no-alerts-text">${escapeHtml(cfg.no_alerts_message || DEFAULT_CONFIG.no_alerts_message)}</span>
+        </div>
+        ${cfg.show_last_updated ? this._updatedAtHtml() : ''}
+      `;
+    }
+
+    _noRegionsHtml() {
+      return `
+        <div class="no-alerts no-alerts--no-data">
+          <ha-icon icon="${NO_DATA.icon}" class="no-alerts-icon"></ha-icon>
+          <span class="no-alerts-text">No ProCiv Madeira region sensors found</span>
         </div>
       `;
     }
@@ -795,26 +924,24 @@
       return `<div class="regions-list">${sections}</div>${updatedAt}`;
     }
 
-    _regionSectionHtml({ id, stateObj, customName }, cfg) {
+    _regionSectionHtml(entity, cfg) {
+      if (hasNoData(entity.stateObj))
+        return this._noDataRegionHtml(entity, cfg);
+      const { id, stateObj, customName } = entity;
       const attrs = stateObj.attributes ?? {};
-      const alerts = attrs.alerts ?? [];
 
       // customName (set in the editor) > sensor region attribute > entity id
       const regionName = customName ?? attrs.region ?? id;
 
-      // Split alerts into current and future
-      const currentAlerts = alerts.filter((a) => isCurrentAlert(a));
-      const futureAlerts = alerts.filter((a) => !isCurrentAlert(a));
-
-      // Determine region color/status based on highest current alert level
-      // If there are no current alerts, show green/Normal
-      const highestCurrentLevel = getHighestCurrentAlertLevel(alerts);
-      const hasCurrentAlerts = currentAlerts.length > 0;
-      const level = hasCurrentAlerts ? highestCurrentLevel : ALERT_LEVELS.green;
+      // The integration splits alerts into in effect / upcoming and sets the
+      // state to the most severe alert in effect. Copy before sorting below.
+      const currentAlerts = [...(attrs.alerts ?? [])];
+      const futureAlerts = [...(attrs.upcoming_alerts ?? [])];
+      const level = getAlertLevel(stateObj.state);
       const color = level?.color ?? 'var(--secondary-text-color)';
-      const status = hasCurrentAlerts
-        ? (level?.label ?? stateObj.state)
-        : 'Normal';
+      const status = escapeHtml(
+        levelLabel(this._hass, stateObj, stateObj.state),
+      );
       const headerIcon =
         cfg.show_icon !== false
           ? (level?.icon ?? 'mdi:weather-cloudy-alert')
@@ -841,21 +968,23 @@
       const currentAlertsHtml =
         currentAlerts.length > 0
           ? currentAlerts
-              .map((a) => this._currentAlertHtml(a, cfg, color))
+              .map((a) => this._currentAlertHtml(a, cfg, color, stateObj))
               .join('')
           : '';
 
       // Render future alerts in collapsible section
       const futurePanelsHtml =
         futureAlerts.length > 0
-          ? futureAlerts.map((a) => this._alertPanelHtml(a, cfg)).join('')
+          ? futureAlerts
+              .map((a) => this._alertPanelHtml(a, cfg, stateObj))
+              .join('')
           : '';
 
       const isOpen = !this._collapsedRegions.has(id);
       const hasFutureAlerts = futureAlerts.length > 0;
 
       return `
-        <details class="region-section" data-region="${id}"${isOpen ? ' open' : ''}>
+        <details class="region-section" data-region="${escapeHtml(id)}"${isOpen ? ' open' : ''}>
           <summary class="region-header">
             ${iconHtml}
             <span class="region-name" style="color:${color};">${escapeHtml(regionName)}</span>
@@ -866,7 +995,7 @@
           ${
             hasFutureAlerts
               ? `
-          <details class="future-alerts-section">
+          <details class="future-alerts-section" data-future="${escapeHtml(id)}"${this._openFutureAlerts.has(id) ? ' open' : ''}>
             <summary class="future-alerts-header">
               <span>Future Alerts (${futureAlerts.length})</span>
               <ha-icon icon="mdi:chevron-down" class="future-alerts-chevron" style="--mdc-icon-size:12px;"></ha-icon>
@@ -881,8 +1010,36 @@
       `;
     }
 
+    // A region whose sensor has no data: its name and its state as Home
+    // Assistant shows it, such as "Unavailable".
+    _noDataRegionHtml({ id, stateObj, customName }, cfg) {
+      const key = this._hass.entities?.[id]?.translation_key;
+      const regionName =
+        customName ??
+        stateObj.attributes?.region ??
+        (Object.hasOwn(REGION_NAMES, key) ? REGION_NAMES[key] : null) ??
+        stateObj.attributes?.friendly_name ??
+        id;
+      const status =
+        formatState(this._hass, stateObj, stateObj.state) ?? NO_DATA.label;
+      const iconHtml =
+        cfg.show_icon !== false
+          ? `<ha-icon icon="${NO_DATA.icon}" style="color:${NO_DATA.color};--mdc-icon-size:16px;" class="region-icon"></ha-icon>`
+          : '';
+
+      return `
+        <div class="region-section region-section--no-data" data-no-data="${escapeHtml(id)}">
+          <div class="region-header">
+            ${iconHtml}
+            <span class="region-name" style="color:${NO_DATA.color};">${escapeHtml(regionName)}</span>
+            <span class="region-badge" style="color:${NO_DATA.color};">${escapeHtml(status)}</span>
+          </div>
+        </div>
+      `;
+    }
+
     // Render a current alert using the same panel layout as future alerts.
-    _currentAlertHtml(alert, cfg, regionColor) {
+    _currentAlertHtml(alert, cfg, regionColor, stateObj) {
       const level = getAlertLevel(alert.alert_type);
       const color =
         level?.color ?? regionColor ?? 'var(--secondary-text-color)';
@@ -897,7 +1054,7 @@
           ? `<span class="panel-type" style="color:${color};">${escapeHtml(alert.problem_type)}</span>`
           : '';
 
-      const levelBadge = `<span class="panel-level-badge" style="color:${color};">${escapeHtml(level?.label ?? alert.alert_type)}</span>`;
+      const levelBadge = `<span class="panel-level-badge" style="color:${color};">${escapeHtml(levelLabel(this._hass, stateObj, alert.alert_type))}</span>`;
 
       const dateRange =
         cfg.show_dates !== false
@@ -929,7 +1086,12 @@
       }
 
       // Has description — collapsible panel.
-      const alertKey = `current_${alert.region_code}__${alert.start_date || alert.problem_type || ''}`;
+      const alertKey = [
+        alert.region_code,
+        alert.problem_type,
+        alert.alert_type,
+        alert.start_date,
+      ].join('|');
       const isOpen = this._expandedAlerts.has(alertKey);
       return `
         <details class="alert-panel" data-alert="${escapeHtml(alertKey)}"${isOpen ? ' open' : ''} style="background:${bg};border-color:${border};">
@@ -945,7 +1107,7 @@
       `;
     }
 
-    _alertPanelHtml(alert, cfg) {
+    _alertPanelHtml(alert, cfg, stateObj) {
       const level = getAlertLevel(alert.alert_type);
       const color = level?.color ?? 'var(--secondary-text-color)';
       const bg = level?.chipBg ?? 'rgba(0,0,0,0.05)';
@@ -959,7 +1121,7 @@
           ? `<span class="panel-type" style="color:${color};">${escapeHtml(alert.problem_type)}</span>`
           : '';
 
-      const levelBadge = `<span class="panel-level-badge" style="color:${color};">${escapeHtml(level?.label ?? alert.alert_type)}</span>`;
+      const levelBadge = `<span class="panel-level-badge" style="color:${color};">${escapeHtml(levelLabel(this._hass, stateObj, alert.alert_type))}</span>`;
 
       const dateRange =
         cfg.show_dates !== false
@@ -992,7 +1154,12 @@
       }
 
       // Has description — render a collapsible <details> panel.
-      const alertKey = `${alert.region_code}__${alert.start_date || alert.problem_type || ''}`;
+      const alertKey = [
+        alert.region_code,
+        alert.problem_type,
+        alert.alert_type,
+        alert.start_date,
+      ].join('|');
       const isOpen = this._expandedAlerts.has(alertKey);
       return `
         <details class="alert-panel" data-alert="${escapeHtml(alertKey)}"${isOpen ? ' open' : ''} style="background:${bg};border-color:${border};">
@@ -1010,18 +1177,31 @@
 
     // ── Last updated ───────────────────────────────────────────────────────────
 
+    // Time of the last successful fetch, or null while it isn't known.
+    _lastFetchTime() {
+      const { lastFetchId } = this._discover();
+      const ts = lastFetchId ? this._hass?.states[lastFetchId]?.state : null;
+      return relativeTime(ts) ? ts : null;
+    }
+
     _updatedAtHtml() {
-      // Derive the last-fetch sensor ID from entity_prefix:
-      // "sensor.prociv_madeira_alert_" → "sensor.prociv_madeira_last_fetch"
-      const prefix = this._config?.entity_prefix ?? '';
-      const base = prefix.replace(/alert_$/, '');
-      const sensor = this._hass?.states[`${base}last_fetch`];
-      const ts = sensor?.state;
-      if (!ts || ts === 'unavailable' || ts === 'unknown') return '';
-      const rel = relativeTime(ts);
-      return rel
-        ? `<div class="updated-at" data-ts="${ts}">Updated ${rel}</div>`
+      const ts = this._lastFetchTime();
+      return ts
+        ? `<div class="updated-at" data-ts="${escapeHtml(ts)}">Updated ${relativeTime(ts)}</div>`
         : '';
+    }
+
+    // Shows a new last fetch time without rebuilding the card, so open
+    // sections and focus are kept. Renders when the line appears or goes.
+    _updateLastFetch() {
+      const ts = this._lastFetchTime();
+      const el = this.shadowRoot.querySelector('.updated-at');
+      if (el && ts) {
+        el.dataset.ts = ts;
+        this._tickUpdatedAt();
+      } else if (el || ts) {
+        this._render();
+      }
     }
 
     // Starts the 30-second relative-time ticker (idempotent — safe to call repeatedly).
@@ -1117,6 +1297,8 @@
 
         .badge--clear { background: rgba(27,94,32,0.12); color: #1B5E20; }
 
+        .badge--no-data { background: rgba(127,127,127,0.12); color: var(--secondary-text-color); }
+
         /* Per-level alert count chips */
         .level-chip {
           display: inline-flex;
@@ -1162,6 +1344,9 @@
           text-align: center;
         }
 
+        .no-alerts--no-data .no-alerts-icon,
+        .no-alerts--no-data .no-alerts-text { color: var(--secondary-text-color); }
+
         /* ── Regions list (grid via columns config) */
         .regions-list {
           display: grid;
@@ -1189,6 +1374,8 @@
         .region-header::-webkit-details-marker { display: none; }
 
         .region-icon { flex-shrink: 0; }
+
+        .region-section--no-data .region-header { cursor: default; }
 
         .chevron-icon {
           flex-shrink: 0;
@@ -1387,12 +1574,18 @@
   // Registration
   // ---------------------------------------------------------------------------
 
-  if (!customElements.get(EDITOR_NAME)) {
+  // Another copy of the card (for example an old /local resource) may already
+  // be registered. Custom elements can't be redefined, so the first one wins.
+  const loadedCard = customElements.get(CARD_NAME);
+  if (!loadedCard) {
     customElements.define(EDITOR_NAME, ProcivMadeiraWeatherCardEditor);
-  }
-
-  if (!customElements.get(CARD_NAME)) {
     customElements.define(CARD_NAME, ProcivMadeiraWeatherCard);
+  } else if (loadedCard.version !== CARD_VERSION) {
+    console.warn(
+      `${CARD_NAME} ${loadedCard.version ?? '(unknown version)'} is already loaded, ` +
+        `so version ${CARD_VERSION} bundled with the ProCiv Madeira integration is not used. ` +
+        'Remove any manually added copy of the card from your dashboard resources.',
+    );
   }
 
   window.customCards = window.customCards || [];
@@ -1403,6 +1596,7 @@
       description:
         'Displays Prociv Madeira regional weather alerts. Highlights active warnings and shows a clear status when all regions are safe.',
       preview: true,
+      documentationURL: 'https://github.com/utek/prociv_madeira#lovelace-card',
     });
   }
 })();
