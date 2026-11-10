@@ -62,12 +62,16 @@ Each sensor exposes the following attributes:
 
 ### Aggregate sensors
 
-| Entity                                                         | Description                                            |
-| -------------------------------------------------------------- | ------------------------------------------------------ |
-| `sensor.prociv_madeira_weather_alerts_worst_alert`             | Most severe warning level in effect across all regions |
-| `binary_sensor.prociv_madeira_weather_alerts_any_active_alert` | `on` when any region has a warning in effect           |
+| Entity                                                           | Description                                                            |
+| ---------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| `sensor.prociv_madeira_weather_alerts_worst_alert`               | Most severe warning level in effect across all regions                 |
+| `binary_sensor.prociv_madeira_weather_alerts_any_active_alert`   | `on` when any region has a warning in effect                           |
+| `sensor.prociv_madeira_weather_alerts_worst_upcoming_alert`      | Most severe warning level that has not started yet, across all regions |
+| `binary_sensor.prociv_madeira_weather_alerts_any_upcoming_alert` | `on` when any region has a warning that has not started yet            |
 
-While a region sensor is unavailable, these only report what is certain: the worst alert stays available when another region is already red, and the binary sensor stays available when another region has a warning in effect. Otherwise they are unavailable too.
+Use the upcoming entities to be warned ahead of time: IPMA publishes warnings up to three days before they start, and the entities above only change once a warning is in effect.
+
+While a region sensor is unavailable, these only report what is certain: the worst alerts stay available when another region already has a red warning of that kind, and the binary sensors stay available when another region has a warning of that kind. Otherwise they are unavailable too.
 
 ### Diagnostic
 
@@ -85,6 +89,8 @@ type: custom:prociv-madeira-weather-card
 ```
 
 With no options the card finds the integration's region sensors by itself, leaving out sensors you have hidden. It opens expanded; click the header to collapse it. Level labels follow your Home Assistant language.
+
+The header counts the warnings in effect per level, then the upcoming ones under **Upcoming**, outlined. It only says **All Clear** when there are neither. A region's **Future Alerts** start open when an orange or red warning is coming, until you open or close them yourself.
 
 Regions whose sensor is unavailable are always shown, labelled as unavailable, and the header then says **No data** instead of **All Clear**.
 

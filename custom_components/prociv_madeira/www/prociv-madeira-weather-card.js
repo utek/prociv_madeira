@@ -616,7 +616,8 @@
       this._discovered = null;
       this._collapsedRegions = new Set();
       this._expandedAlerts = new Set();
-      this._openFutureAlerts = new Set();
+      // Region id -> open state of its Future Alerts, where the user changed it.
+      this._futureAlertsToggled = new Map();
       this._tickTimer = null;
       this.attachShadow({ mode: 'open' });
     }
@@ -759,8 +760,9 @@
         else this._expandedAlerts.delete(d.dataset.alert);
       });
       this.shadowRoot.querySelectorAll('details[data-future]').forEach((d) => {
-        if (d.open) this._openFutureAlerts.add(d.dataset.future);
-        else this._openFutureAlerts.delete(d.dataset.future);
+        if (d.open === (d.dataset.futureDefault === 'open'))
+          this._futureAlertsToggled.delete(d.dataset.future);
+        else this._futureAlertsToggled.set(d.dataset.future, d.open);
       });
 
       const cfg = this._config;
@@ -789,12 +791,18 @@
         });
       }
 
-      // Count every alert in effect by severity level across all regions.
+      // Count the alerts in effect and the upcoming ones by severity level
+      // across all regions.
       const alertsByLevel = { red: 0, orange: 0, yellow: 0 };
+      const upcomingByLevel = { red: 0, orange: 0, yellow: 0 };
       for (const { stateObj } of entities) {
         for (const a of stateObj.attributes?.alerts ?? []) {
           const t = String(a.alert_type ?? '').toLowerCase();
           if (Object.hasOwn(alertsByLevel, t)) alertsByLevel[t]++;
+        }
+        for (const a of stateObj.attributes?.upcoming_alerts ?? []) {
+          const t = String(a.alert_type ?? '').toLowerCase();
+          if (Object.hasOwn(upcomingByLevel, t)) upcomingByLevel[t]++;
         }
       }
 
@@ -806,7 +814,7 @@
       this.shadowRoot.innerHTML = `
         <style>${this._styles(cols)}</style>
         <ha-card>
-          ${cfg.show_header !== false ? this._headerHtml(alertsByLevel, noDataCount, regions.length, cfg) : ''}
+          ${cfg.show_header !== false ? this._headerHtml(alertsByLevel, upcomingByLevel, noDataCount, regions.length, cfg) : ''}
           ${
             showContent
               ? `
@@ -831,11 +839,14 @@
 
     // ── Header ─────────────────────────────────────────────────────────────────
 
-    // Warnings per level, plus the number of regions without data. "All Clear"
-    // needs data for at least one region and for every region shown.
-    _headerHtml(alertsByLevel, noDataCount, regionCount, cfg) {
+    // Warnings in effect per level, plus the number of regions without data,
+    // then upcoming warnings per level. "All Clear" needs data for at least
+    // one region and for every region shown, and no upcoming warnings.
+    _headerHtml(alertsByLevel, upcomingByLevel, noDataCount, regionCount, cfg) {
       const totalActive =
         alertsByLevel.red + alertsByLevel.orange + alertsByLevel.yellow;
+      const totalUpcoming =
+        upcomingByLevel.red + upcomingByLevel.orange + upcomingByLevel.yellow;
       const chip = (key, level, count, title) => `
               <div class="level-chip" data-level="${key}"${title ? ` title="${title}"` : ''} style="background:${level.chipBg};border-color:${level.chipBorder};color:${level.color};">
                 <ha-icon icon="${level.icon}" style="--mdc-icon-size:12px;"></ha-icon>
@@ -861,11 +872,29 @@
              <ha-icon icon="${NO_DATA.icon}"></ha-icon>
              <span>${NO_DATA.label}</span>
            </div>`;
+      } else if (totalUpcoming > 0) {
+        statusHtml = '';
       } else {
         statusHtml = `<div class="badge badge--clear">
              <ha-icon icon="mdi:check-circle"></ha-icon>
              <span>All Clear</span>
            </div>`;
+      }
+
+      if (totalUpcoming > 0) {
+        statusHtml +=
+          '<span class="upcoming-label">Upcoming</span>' +
+          ['red', 'orange', 'yellow']
+            .filter((key) => upcomingByLevel[key] > 0)
+            .map((key) => {
+              const level = ALERT_LEVELS[key];
+              return `
+              <div class="level-chip level-chip--upcoming" data-upcoming="${key}" title="Upcoming warnings" style="border-color:${level.color};color:${level.color};">
+                <ha-icon icon="${level.icon}" style="--mdc-icon-size:12px;"></ha-icon>
+                <span>${upcomingByLevel[key]}</span>
+              </div>`;
+            })
+            .join('');
       }
 
       const chevronCls = this._cardExpanded
@@ -982,6 +1011,12 @@
 
       const isOpen = !this._collapsedRegions.has(id);
       const hasFutureAlerts = futureAlerts.length > 0;
+      // Future Alerts start open when an orange or red warning is coming,
+      // unless the user opened or closed them.
+      const futureDefaultOpen = futureAlerts.some((a) =>
+        ['orange', 'red'].includes(String(a.alert_type ?? '').toLowerCase()),
+      );
+      const futureOpen = this._futureAlertsToggled.get(id) ?? futureDefaultOpen;
 
       return `
         <details class="region-section" data-region="${escapeHtml(id)}"${isOpen ? ' open' : ''}>
@@ -995,7 +1030,7 @@
           ${
             hasFutureAlerts
               ? `
-          <details class="future-alerts-section" data-future="${escapeHtml(id)}"${this._openFutureAlerts.has(id) ? ' open' : ''}>
+          <details class="future-alerts-section" data-future-default="${futureDefaultOpen ? 'open' : 'closed'}" data-future="${escapeHtml(id)}"${futureOpen ? ' open' : ''}>
             <summary class="future-alerts-header">
               <span>Future Alerts (${futureAlerts.length})</span>
               <ha-icon icon="mdi:chevron-down" class="future-alerts-chevron" style="--mdc-icon-size:12px;"></ha-icon>
@@ -1310,6 +1345,18 @@
           font-size: 11px;
           font-weight: 700;
           white-space: nowrap;
+        }
+
+        /* Upcoming warnings: outlined, so they don't read as in effect */
+        .level-chip--upcoming { border-style: dashed; background: transparent; }
+
+        .upcoming-label {
+          margin-left: 4px;
+          font-size: 10px;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+          color: var(--secondary-text-color);
         }
 
         /* ── Divider ────────────────────────────── */

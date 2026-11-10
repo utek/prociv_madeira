@@ -268,6 +268,79 @@ test('lists upcoming warnings separately', () => {
   assert.ok(render({}, southCoastHeat()).includes('Future Alerts (1)'));
 });
 
+// IPMA warnings for tonight, before any of them is in effect.
+const redTonight = () =>
+  makeHass({
+    upcoming: {
+      CS: [
+        warning('CS', 'red', 'Precipitation', 13, 22),
+        warning('CS', 'orange', 'Wind', 13, 28),
+      ],
+      CN: [warning('CN', 'orange', 'Wind', 13, 28)],
+    },
+  });
+
+test('shows upcoming warnings in the header instead of all clear', () => {
+  const html = render({}, redTonight());
+
+  assert.ok(!html.includes('All Clear'));
+  assert.ok(html.includes('Upcoming'));
+  assert.match(html, /data-upcoming="red"[^>]*>[\s\S]*?<span>1<\/span>/);
+  assert.match(html, /data-upcoming="orange"[^>]*>[\s\S]*?<span>2<\/span>/);
+  assert.ok(!html.includes('data-upcoming="yellow"'));
+  // Nothing is in effect yet.
+  assert.ok(!html.includes('data-level='));
+});
+
+test('shows upcoming warnings next to the ones in effect', () => {
+  const html = render({}, southCoastHeat());
+
+  assert.ok(html.includes('data-level="orange"'));
+  assert.ok(html.includes('data-upcoming="red"'));
+});
+
+test('opens upcoming orange and red warnings, not yellow ones', () => {
+  const hass = redTonight();
+  hass.states[
+    'sensor.prociv_madeira_weather_alerts_porto_santo'
+  ].attributes.upcoming_alerts.push(
+    warning('PS', 'yellow', 'Rough Seas', 25, 37),
+  );
+  const html = render({}, hass);
+
+  assert.ok(html.includes(`data-future="${SOUTH_COAST}" open>`));
+  assert.ok(
+    html.includes(
+      'data-future="sensor.prociv_madeira_weather_alerts_porto_santo">',
+    ),
+  );
+});
+
+test('keeps an upcoming red warning closed after the user closes it', () => {
+  const card = newCard(loadCard(), {});
+  const hass = redTonight();
+  card.hass = hass;
+  assert.ok(
+    card.shadowRoot.innerHTML.includes(`data-future="${SOUTH_COAST}" open>`),
+  );
+  card.shadowRoot.querySelectorAll = (selector) =>
+    selector === 'details[data-future]'
+      ? [
+          {
+            open: false,
+            dataset: { future: SOUTH_COAST, futureDefault: 'open' },
+          },
+        ]
+      : [];
+
+  card.hass = withState(hass, LAST_FETCH, { state: hoursFromNow(1) });
+  card._render();
+
+  assert.ok(
+    card.shadowRoot.innerHTML.includes(`data-future="${SOUTH_COAST}">`),
+  );
+});
+
 test('hides clear regions unless show_all is on, then sorts by severity', () => {
   assert.deepEqual(regionNames(render({}, southCoastHeat())), ['South Coast']);
   assert.deepEqual(regionNames(render({ show_all: true }, southCoastHeat())), [
@@ -588,7 +661,9 @@ test('ignores the last fetch time when it is not shown', () => {
 
 test('keeps future alerts open across updates', () => {
   const card = newCard(loadCard(), {});
-  const hass = southCoastHeat();
+  const hass = makeHass({
+    upcoming: { CS: [warning('CS', 'yellow', 'Wind', 3, 4)] },
+  });
   card.hass = hass;
   assert.ok(
     card.shadowRoot.innerHTML.includes(`data-future="${SOUTH_COAST}">`),

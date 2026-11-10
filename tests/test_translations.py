@@ -59,7 +59,7 @@ def test_translation_keys_used_in_the_code_exist() -> None:
 
 
 def test_every_alert_level_has_a_state_name() -> None:
-    level_sensors = [*REGION_KEYS.values(), "worst_alert"]
+    level_sensors = [*REGION_KEYS.values(), "worst_alert", "worst_upcoming_alert"]
 
     for language in ("en", "pt"):
         sensors = _load(f"translations/{language}.json")["entity"]["sensor"]

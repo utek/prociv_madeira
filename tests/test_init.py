@@ -48,6 +48,8 @@ from .common import ipma_row
 PREFIX = "sensor.prociv_madeira_weather_alerts_"
 ANY_ALERT = "binary_sensor.prociv_madeira_weather_alerts_any_active_alert"
 WORST_ALERT = f"{PREFIX}worst_alert"
+ANY_UPCOMING = "binary_sensor.prociv_madeira_weather_alerts_any_upcoming_alert"
+WORST_UPCOMING = f"{PREFIX}worst_upcoming_alert"
 LAST_FETCH = f"{PREFIX}last_fetch"
 REFRESH = "button.prociv_madeira_weather_alerts_refresh_data"
 NORTH_COAST = f"{PREFIX}north_coast"
@@ -61,6 +63,7 @@ REGION_SENSORS = [
 CARD_PATH = "/prociv_madeira/prociv-madeira-weather-card.js"
 LEGACY_URL = "https://www.procivmadeira.pt/pt/12-avisos.html"
 NOON = "2026-09-14T12:00:00+00:00"
+TONIGHT = "2026-09-14T21:00:00", "2026-09-15T06:00:00"
 
 pytestmark = pytest.mark.usefixtures("mock_frontend")
 
@@ -195,6 +198,37 @@ async def test_upcoming_warnings_are_not_in_effect_yet(
     assert [a["alert_type"] for a in south.attributes["upcoming_alerts"]] == ["red"]
     assert _state(hass, WORST_ALERT) == "green"
     assert _state(hass, ANY_ALERT) == "off"
+    assert _state(hass, WORST_UPCOMING) == "red"
+    assert _state(hass, ANY_UPCOMING) == "on"
+
+    await _move_to(hass, freezer, "2026-09-14T15:00:00+00:00")
+    assert _state(hass, WORST_ALERT) == "red"
+    assert _state(hass, ANY_ALERT) == "on"
+    assert _state(hass, WORST_UPCOMING) == "green"
+    assert _state(hass, ANY_UPCOMING) == "off"
+
+
+async def test_worst_upcoming_alert_is_the_most_severe_across_regions(
+    hass: HomeAssistant,
+    aioclient_mock: AiohttpClientMocker,
+    freezer: FrozenDateTimeFactory,
+) -> None:
+    freezer.move_to(NOON)
+    aioclient_mock.get(
+        URL,
+        json=[
+            *ipma_baseline(),
+            ipma_row("MCN", "Vento", "orange", *TONIGHT),
+            ipma_row("MRM", "Precipitação", "red", *TONIGHT),
+            # In effect now, so not upcoming.
+            ipma_row("MPS", "Vento", "yellow"),
+        ],
+    )
+    await _setup_integration(hass)
+
+    assert _state(hass, WORST_UPCOMING) == "red"
+    assert _state(hass, ANY_UPCOMING) == "on"
+    assert _state(hass, WORST_ALERT) == "yellow"
 
 
 async def test_attributes_describe_the_worst_warning_in_effect(
@@ -246,12 +280,13 @@ async def test_all_clear_feed_reports_green(
     aioclient_mock.get(URL, json=[row for row in ipma_feed() if row["text"] == ""])
     await _setup_integration(hass)
 
-    for entity_id in [*REGION_SENSORS, WORST_ALERT]:
+    for entity_id in [*REGION_SENSORS, WORST_ALERT, WORST_UPCOMING]:
         state = hass.states.get(entity_id)
         assert state.state == "green"
         # Every option has a state name (see test_translations).
         assert state.attributes["options"] == list(ALERT_SEVERITY)
     assert _state(hass, ANY_ALERT) == "off"
+    assert _state(hass, ANY_UPCOMING) == "off"
 
 
 async def test_alert_lists_are_not_recorded(
@@ -269,7 +304,15 @@ async def test_alert_lists_are_not_recorded(
     [
         (
             "en",
-            [*REGION_SENSORS, WORST_ALERT, LAST_FETCH, ANY_ALERT, REFRESH],
+            [
+                *REGION_SENSORS,
+                WORST_ALERT,
+                WORST_UPCOMING,
+                LAST_FETCH,
+                ANY_ALERT,
+                ANY_UPCOMING,
+                REFRESH,
+            ],
         ),
         (
             "pt",
@@ -279,8 +322,10 @@ async def test_alert_lists_are_not_recorded(
                 f"{PREFIX}porto_santo",
                 f"{PREFIX}regioes_montanhosas",
                 f"{PREFIX}pior_aviso",
+                f"{PREFIX}pior_aviso_previsto",
                 f"{PREFIX}ultima_atualizacao",
                 "binary_sensor.prociv_madeira_weather_alerts_algum_aviso_ativo",
+                "binary_sensor.prociv_madeira_weather_alerts_algum_aviso_previsto",
                 "button.prociv_madeira_weather_alerts_atualizar_dados",
             ],
         ),
@@ -317,6 +362,9 @@ async def test_icons_follow_the_alert_level(hass: HomeAssistant) -> None:
     assert icons["sensor"]["south_coast"]["default"] == "mdi:check-circle"
     assert icons["sensor"]["south_coast"]["state"]["red"] == "mdi:alert-octagon"
     assert icons["binary_sensor"]["any_active_alert"]["state"]["on"] == "mdi:alert"
+    assert icons["binary_sensor"]["any_upcoming_alert"]["state"]["on"] == (
+        "mdi:alert-outline"
+    )
 
 
 async def test_default_scan_interval(
@@ -389,6 +437,32 @@ async def test_aggregates_are_only_reported_when_certain(
 
     assert _state(hass, WORST_ALERT) == worst_alert
     assert _state(hass, ANY_ALERT) == any_active_alert
+
+
+@pytest.mark.parametrize(
+    ("elsewhere", "worst_upcoming", "any_upcoming"),
+    [
+        (ipma_row("MCS", "Vento", "red", *TONIGHT), "red", "on"),
+        (ipma_row("MCS", "Vento", "yellow", *TONIGHT), STATE_UNAVAILABLE, "on"),
+        (ipma_row("MCS", "Vento", "red"), STATE_UNAVAILABLE, STATE_UNAVAILABLE),
+    ],
+    ids=["red-upcoming-elsewhere", "upcoming-elsewhere", "nothing-upcoming"],
+)
+async def test_upcoming_aggregates_are_only_reported_when_certain(
+    hass: HomeAssistant,
+    aioclient_mock: AiohttpClientMocker,
+    freezer: FrozenDateTimeFactory,
+    elsewhere: dict[str, str],
+    worst_upcoming: str,
+    any_upcoming: str,
+) -> None:
+    freezer.move_to(NOON)
+    broken = ipma_row("MCN", "Vento", "red", "garbage")
+    aioclient_mock.get(URL, json=[*ipma_baseline(), broken, elsewhere])
+    await _setup_integration(hass)
+
+    assert _state(hass, WORST_UPCOMING) == worst_upcoming
+    assert _state(hass, ANY_UPCOMING) == any_upcoming
 
 
 # ---------------------------------------------------------------------------

@@ -6,6 +6,12 @@
         "state": {
           "on": "mdi:alert"
         }
+      },
+      "any_upcoming_alert": {
+        "default": "mdi:check-circle",
+        "state": {
+          "on": "mdi:alert-outline"
+        }
       }
     },
     "button": {
@@ -47,6 +53,14 @@
         }
       },
       "worst_alert": {
+        "default": "mdi:check-circle",
+        "state": {
+          "yellow": "mdi:alert-circle",
+          "orange": "mdi:alert",
+          "red": "mdi:alert-octagon"
+        }
+      },
+      "worst_upcoming_alert": {
         "default": "mdi:check-circle",
         "state": {
           "yellow": "mdi:alert-circle",

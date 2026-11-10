@@ -44,6 +44,7 @@ async def async_setup_entry(
                 for code in REGIONS
             ],
             ProcivMadeiraWorstAlertSensor(coordinator=coordinator),
+            ProcivMadeiraWorstUpcomingAlertSensor(coordinator=coordinator),
             ProcivMadeiraLastFetchSensor(coordinator=coordinator),
         ]
     )
@@ -136,6 +137,38 @@ class ProcivMadeiraWorstAlertSensor(ProcivMadeiraEntity, SensorEntity):
             alert
             for alerts in self.coordinator.data.alerts.values()
             for alert in split_alerts(alerts, now)[0]
+        )
+
+
+class ProcivMadeiraWorstUpcomingAlertSensor(ProcivMadeiraEntity, SensorEntity):
+    """Sensor that reports the most severe warning not in effect yet."""
+
+    _attr_device_class = SensorDeviceClass.ENUM
+    _attr_options = ["green", "yellow", "orange", "red"]
+    _attr_translation_key = "worst_upcoming_alert"
+
+    def __init__(self, coordinator: ProcivMadeiraDataUpdateCoordinator) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator)
+        self._attr_unique_id = (
+            f"{coordinator.config_entry.entry_id}_worst_upcoming_alert"
+        )
+
+    @property
+    def available(self) -> bool:
+        """Return False when a region without usable data could be worse."""
+        return super().available and (
+            not self.coordinator.data.invalid or self.native_value == "red"
+        )
+
+    @property
+    def native_value(self) -> str:
+        """Return the most severe upcoming warning across all regions."""
+        now = dt_util.utcnow()
+        return highest_alert_type(
+            alert
+            for alerts in self.coordinator.data.alerts.values()
+            for alert in split_alerts(alerts, now)[1]
         )
 
 

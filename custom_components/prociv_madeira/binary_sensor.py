@@ -29,7 +29,12 @@ async def async_setup_entry(
 ) -> None:
     """Set up the binary sensor platform."""
     coordinator = entry.runtime_data.coordinator
-    async_add_entities([ProcivMadeiraAnyAlertBinarySensor(coordinator=coordinator)])
+    async_add_entities(
+        [
+            ProcivMadeiraAnyAlertBinarySensor(coordinator=coordinator),
+            ProcivMadeiraAnyUpcomingAlertBinarySensor(coordinator=coordinator),
+        ]
+    )
 
 
 class ProcivMadeiraAnyAlertBinarySensor(ProcivMadeiraEntity, BinarySensorEntity):
@@ -54,5 +59,33 @@ class ProcivMadeiraAnyAlertBinarySensor(ProcivMadeiraEntity, BinarySensorEntity)
         now = dt_util.utcnow()
         return any(
             split_alerts(alerts, now)[0]
+            for alerts in self.coordinator.data.alerts.values()
+        )
+
+
+class ProcivMadeiraAnyUpcomingAlertBinarySensor(
+    ProcivMadeiraEntity, BinarySensorEntity
+):
+    """Binary sensor that is ON when any region has a warning not in effect yet."""
+
+    _attr_device_class = BinarySensorDeviceClass.PROBLEM
+    _attr_translation_key = "any_upcoming_alert"
+
+    def __init__(self, coordinator: ProcivMadeiraDataUpdateCoordinator) -> None:
+        """Initialize the binary sensor."""
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{coordinator.config_entry.entry_id}_any_upcoming_alert"
+
+    @property
+    def available(self) -> bool:
+        """Return False when a region without usable data could have a warning."""
+        return super().available and (self.is_on or not self.coordinator.data.invalid)
+
+    @property
+    def is_on(self) -> bool:
+        """Return True if any region has a warning that has not started yet."""
+        now = dt_util.utcnow()
+        return any(
+            split_alerts(alerts, now)[1]
             for alerts in self.coordinator.data.alerts.values()
         )

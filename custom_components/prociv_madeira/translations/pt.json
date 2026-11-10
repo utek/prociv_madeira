@@ -34,6 +34,9 @@
     "binary_sensor": {
       "any_active_alert": {
         "name": "Algum aviso ativo"
+      },
+      "any_upcoming_alert": {
+        "name": "Algum aviso previsto"
       }
     },
     "button": {
@@ -80,6 +83,15 @@
       },
       "worst_alert": {
         "name": "Pior aviso",
+        "state": {
+          "green": "Normal",
+          "yellow": "Moderado",
+          "orange": "Elevado",
+          "red": "Extremo"
+        }
+      },
+      "worst_upcoming_alert": {
+        "name": "Pior aviso previsto",
         "state": {
           "green": "Normal",
           "yellow": "Moderado",
